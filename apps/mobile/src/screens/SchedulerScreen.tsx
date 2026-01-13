@@ -12,7 +12,8 @@ import {
   Modal
 } from 'react-native';
 import { useTasks } from '../hooks/useTasks';
-import { parseUserRequest } from '../ai/localScheduler';
+import { useEvents } from '../hooks/useEvents';
+import { supabase } from '../lib/supabaseClient';
 import { ChatMessage, Proposal } from '../types/scheduler';
 
 const makeId = () =>
@@ -21,12 +22,11 @@ const makeId = () =>
     : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
 export default function SchedulerScreen() {
-  const { addTask } = useTasks();
+  const { addTask, tasks } = useTasks();
+  const { events, addEvent } = useEvents();
+
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // We keep track of the *current* proposal(s) waiting for confirmation
-  // In a more complex app, we might attach proposals to specific messages, 
-  // but for now, we just clear them when handled.
   const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
 
   // Edit Modal State
@@ -38,7 +38,7 @@ export default function SchedulerScreen() {
 
   const flatListRef = useRef<FlatList>(null);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
     const userMsg: ChatMessage = {
@@ -51,20 +51,68 @@ export default function SchedulerScreen() {
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
 
-    // Process with AI stub
-    const response = parseUserRequest(inputText, new Date());
+    try {
+      const context = {
+        tasks: tasks.filter(t => !t.completed),
+        events: events,
+        prefs: {}
+      };
 
-    // Slight delay to feel like "thinking"
-    setTimeout(() => {
-      const aiMsg: ChatMessage = {
+      const { data, error } = await supabase.functions.invoke('ai-scheduler', {
+        body: {
+          message: inputText,
+          nowIso: new Date().toISOString(),
+          timezone: 'America/Winnipeg',
+          context
+        }
+      });
+
+      if (error) throw error;
+
+      if (data) {
+        const aiMsg: ChatMessage = {
+          id: makeId(),
+          role: 'assistant',
+          text: data.assistantText,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, aiMsg]);
+
+        // Ensure proposals have IDs for React keys
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newProposals: Proposal[] = (data.proposals || []).map((p: any) => ({
+          ...p,
+          id: p.id || makeId(),
+        }));
+        setPendingProposals(newProposals);
+      }
+
+    } catch (err: unknown) {
+      console.error("AI Request Failed", err);
+
+      // Read the underlying Response from error.context (if present)
+      // We cast as any to safely access custom properties on the error object
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx: any = (err as any).context;
+      if (ctx) {
+        console.error('Function status:', ctx.status);
+        try {
+          // Clone response or just read text if allowed
+          const txt = await ctx.text();
+          console.error('Function body:', txt);
+        } catch (e) {
+          console.error('Could not read response body', e);
+        }
+      }
+
+      const errorMsg: ChatMessage = {
         id: makeId(),
         role: 'assistant',
-        text: response.assistantText,
+        text: "AI request failed. Check logs for details.",
         createdAt: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, aiMsg]);
-      setPendingProposals(response.proposals);
-    }, 500);
+      setMessages(prev => [...prev, errorMsg]);
+    }
   };
 
   const handleConfirmProposal = async (proposal: Proposal) => {
@@ -75,20 +123,32 @@ export default function SchedulerScreen() {
           notes: proposal.notes,
           dueDate: proposal.dueDate
         });
-
-        const successMsg: ChatMessage = {
-          id: makeId(),
-          role: 'assistant',
-          text: "Saved ✅",
-          createdAt: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, successMsg]);
-
-        // Remove the confirmed proposal from pending
-        setPendingProposals(prev => prev.filter(p => p.id !== proposal.id));
+      } else if (proposal.type === 'event') {
+        if (proposal.startAt && proposal.endAt) {
+          await addEvent({
+            title: proposal.title,
+            startAt: proposal.startAt,
+            endAt: proposal.endAt,
+            location: proposal.location || undefined,
+            notes: proposal.notes || undefined,
+          })
+        } else {
+          console.warn("Event proposal missing dates", proposal);
+        }
       }
+
+      const successMsg: ChatMessage = {
+        id: makeId(),
+        role: 'assistant',
+        text: "Saved ✅",
+        createdAt: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, successMsg]);
+
+      setPendingProposals(prev => prev.filter(p => p.id !== proposal.id));
+
     } catch (error) {
-      console.error("Failed to save task", error);
+      console.error("Failed to save item", error);
     }
   };
 
@@ -107,8 +167,7 @@ export default function SchedulerScreen() {
       return;
     }
 
-    if (editDueDate.trim()) {
-      // Validate YYYY-MM-DD
+    if (editDueDate.trim() && editingProposal.type === 'task') {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(editDueDate.trim())) {
         setEditError("Date must be YYYY-MM-DD");
@@ -116,7 +175,6 @@ export default function SchedulerScreen() {
       }
     }
 
-    // Update the proposal in the pending list
     setPendingProposals(prev => prev.map(p =>
       p.id === editingProposal.id
         ? { ...p, title: editTitle.trim(), dueDate: editDueDate.trim() || undefined, notes: editNotes.trim() || undefined }
@@ -127,7 +185,6 @@ export default function SchedulerScreen() {
   };
 
   useEffect(() => {
-    // Auto-scroll to bottom of chat
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages, pendingProposals]);
 
@@ -166,6 +223,9 @@ export default function SchedulerScreen() {
                     <Text style={styles.proposalType}>{proposal.type.toUpperCase()}</Text>
                   </View>
                   <Text style={styles.proposalTitle}>{proposal.title}</Text>
+                  {proposal.startAt && (
+                    <Text style={styles.proposalDetail}>🕒 {new Date(proposal.startAt).toLocaleString()}</Text>
+                  )}
                   {proposal.dueDate && (
                     <Text style={styles.proposalDetail}>📅 {proposal.dueDate}</Text>
                   )}
@@ -206,7 +266,6 @@ export default function SchedulerScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Edit Modal */}
         <Modal
           animationType="slide"
           transparent={true}
@@ -329,7 +388,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  // Proposal Card Styles
   proposalCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -397,7 +455,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
