@@ -1,21 +1,24 @@
 ﻿import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Platform } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native'; // Ensure this is installed/available, standard in Expo routing
+import { useFocusEffect } from '@react-navigation/native';
 import { useTasks } from '../hooks/useTasks';
+import { useEvents } from '../hooks/useEvents';
 import { Task } from '../types/task';
+import { Event } from '../types/event';
 
 export default function HomeScreen() {
-  const { tasks, refresh } = useTasks();
+  const { tasks, refresh: refreshTasks } = useTasks();
+  const { events, refresh: refreshEvents } = useEvents();
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh])
+      refreshTasks();
+      refreshEvents();
+    }, [refreshTasks, refreshEvents])
   );
 
   const { todayMetric, next7DaysMetric, todayTasks, next7DaysTasks } = useMemo(() => {
     const today = new Date();
-    // Use local time construction to match user expectation
     const todayStr = [
       today.getFullYear(),
       String(today.getMonth() + 1).padStart(2, '0'),
@@ -43,21 +46,72 @@ export default function HomeScreen() {
     };
   }, [tasks]);
 
+  const { nextEvent, upcomingEvents } = useMemo(() => {
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const nextWeek = new Date(now);
+    nextWeek.setDate(now.getDate() + 7);
+    const nextWeekISO = nextWeek.toISOString();
+
+    const futureEvents = events.filter(e => e.endAt > nowISO).sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+    const next = futureEvents.find(e => e.startAt > nowISO);
+
+    const upcoming = events.filter(e =>
+      e.startAt > nowISO && e.startAt <= nextWeekISO
+    ).sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+    return {
+      nextEvent: next,
+      upcomingEvents: upcoming
+    };
+  }, [events]);
+
   const renderTaskSnippet = (task: Task) => (
-    <View key={task.id} style={styles.taskSnippet}>
-      <Text style={styles.taskSnippetTitle}>{task.title}</Text>
-      <Text style={styles.taskSnippetDate}>{task.dueDate}</Text>
+    <View key={task.id} style={styles.snippet}>
+      <Text style={styles.snippetTitle}>{task.title}</Text>
+      <Text style={styles.snippetDate}>Due: {task.dueDate}</Text>
     </View>
   );
+
+  const renderEventSnippet = (event: Event) => {
+    const s = new Date(event.startAt);
+    const dateStr = s.toLocaleDateString();
+    const timeStr = s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return (
+      <View key={event.id} style={styles.snippet}>
+        <Text style={styles.snippetTitle}>📅 {event.title}</Text>
+        <Text style={styles.snippetDate}>{dateStr} at {timeStr}</Text>
+        {event.location ? <Text style={styles.snippetLocation}>{event.location}</Text> : null}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.headerTitle}>Dashboard</Text>
 
+        {/* Next Event Section */}
+        <View style={[styles.section, styles.highlightSection]}>
+          <Text style={styles.sectionTitleWhite}>Next Event</Text>
+          {nextEvent ? (
+            <View style={styles.nextEventContent}>
+              <Text style={styles.nextEventTitle}>{nextEvent.title}</Text>
+              <Text style={styles.nextEventTime}>
+                {new Date(nextEvent.startAt).toLocaleString()}
+              </Text>
+              {nextEvent.location && <Text style={styles.nextEventLoc}>📍 {nextEvent.location}</Text>}
+            </View>
+          ) : (
+            <Text style={styles.emptyTextWhite}>No upcoming events</Text>
+          )}
+        </View>
+
+        {/* Tasks Due Today */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Due Today</Text>
+            <Text style={styles.sectionTitle}>Tasks Due Today</Text>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{todayMetric}</Text>
             </View>
@@ -69,9 +123,22 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* Upcoming Events (7 Days) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Next 7 Days</Text>
+            <Text style={styles.sectionTitle}>Events (Next 7 Days)</Text>
+          </View>
+          {upcomingEvents.length === 0 ? (
+            <Text style={styles.emptyText}>No upcoming events</Text>
+          ) : (
+            upcomingEvents.map(renderEventSnippet)
+          )}
+        </View>
+
+        {/* Tasks Next 7 Days */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Tasks (Next 7 Days)</Text>
             <View style={[styles.badge, { backgroundColor: '#FF9500' }]}>
               <Text style={styles.badgeText}>{next7DaysMetric}</Text>
             </View>
@@ -114,6 +181,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  highlightSection: {
+    backgroundColor: '#007AFF', // Blue for next event
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -124,6 +194,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
+  },
+  sectionTitleWhite: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 10,
   },
   badge: {
     backgroundColor: '#FF3B30',
@@ -140,18 +216,46 @@ const styles = StyleSheet.create({
     color: '#999',
     fontStyle: 'italic',
   },
-  taskSnippet: {
+  emptyTextWhite: {
+    color: 'rgba(255,255,255,0.7)',
+    fontStyle: 'italic',
+  },
+  snippet: {
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  taskSnippetTitle: {
+  snippetTitle: {
     fontSize: 16,
     color: '#444',
+    fontWeight: '500',
   },
-  taskSnippetDate: {
+  snippetDate: {
     fontSize: 12,
     color: '#888',
     marginTop: 2,
+  },
+  snippetLocation: {
+    fontSize: 12,
+    color: '#007AFF',
+    marginTop: 2,
+  },
+  nextEventContent: {
+    marginTop: 5,
+  },
+  nextEventTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  nextEventTime: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 5,
+  },
+  nextEventLoc: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 5,
   },
 });

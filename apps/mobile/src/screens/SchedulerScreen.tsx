@@ -8,7 +8,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  SafeAreaView
+  SafeAreaView,
+  Modal
 } from 'react-native';
 import { useTasks } from '../hooks/useTasks';
 import { parseUserRequest } from '../ai/localScheduler';
@@ -27,6 +28,13 @@ export default function SchedulerScreen() {
   // In a more complex app, we might attach proposals to specific messages, 
   // but for now, we just clear them when handled.
   const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
+
+  // Edit Modal State
+  const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -75,11 +83,47 @@ export default function SchedulerScreen() {
           createdAt: new Date().toISOString(),
         };
         setMessages(prev => [...prev, successMsg]);
-        setPendingProposals([]); // Clear pending after success
+
+        // Remove the confirmed proposal from pending
+        setPendingProposals(prev => prev.filter(p => p.id !== proposal.id));
       }
     } catch (error) {
       console.error("Failed to save task", error);
     }
+  };
+
+  const handleEditProposal = (proposal: Proposal) => {
+    setEditingProposal(proposal);
+    setEditTitle(proposal.title);
+    setEditDueDate(proposal.dueDate || '');
+    setEditNotes(proposal.notes || '');
+    setEditError(null);
+  };
+
+  const saveEdit = () => {
+    if (!editingProposal) return;
+    if (!editTitle.trim()) {
+      setEditError("Title is required");
+      return;
+    }
+
+    if (editDueDate.trim()) {
+      // Validate YYYY-MM-DD
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(editDueDate.trim())) {
+        setEditError("Date must be YYYY-MM-DD");
+        return;
+      }
+    }
+
+    // Update the proposal in the pending list
+    setPendingProposals(prev => prev.map(p =>
+      p.id === editingProposal.id
+        ? { ...p, title: editTitle.trim(), dueDate: editDueDate.trim() || undefined, notes: editNotes.trim() || undefined }
+        : p
+    ));
+
+    setEditingProposal(null);
   };
 
   useEffect(() => {
@@ -125,12 +169,23 @@ export default function SchedulerScreen() {
                   {proposal.dueDate && (
                     <Text style={styles.proposalDetail}>📅 {proposal.dueDate}</Text>
                   )}
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={() => handleConfirmProposal(proposal)}
-                  >
-                    <Text style={styles.confirmButtonText}>Confirm</Text>
-                  </TouchableOpacity>
+                  {proposal.notes && (
+                    <Text style={styles.proposalDetail}>📝 {proposal.notes}</Text>
+                  )}
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.editButton]}
+                      onPress={() => handleEditProposal(proposal)}
+                    >
+                      <Text style={styles.editButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.confirmButton]}
+                      onPress={() => handleConfirmProposal(proposal)}
+                    >
+                      <Text style={styles.confirmButtonText}>Confirm</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
@@ -150,10 +205,69 @@ export default function SchedulerScreen() {
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Edit Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={!!editingProposal}
+          onRequestClose={() => setEditingProposal(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Edit {editingProposal?.type}</Text>
+
+              <Text style={styles.label}>Title *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Task title"
+              />
+
+              <Text style={styles.label}>Due Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editDueDate}
+                onChangeText={setEditDueDate}
+                placeholder="2026-01-01"
+                keyboardType="numbers-and-punctuation"
+              />
+
+              <Text style={styles.label}>Notes</Text>
+              <TextInput
+                style={[styles.modalInput, styles.notesInput]}
+                value={editNotes}
+                onChangeText={setEditNotes}
+                placeholder="Add notes..."
+                multiline
+              />
+
+              {editError && <Text style={styles.errorText}>{editError}</Text>}
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setEditingProposal(null)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={saveEdit}
+                >
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -254,16 +368,103 @@ const styles = StyleSheet.create({
   proposalDetail: {
     fontSize: 14,
     color: '#555',
-    marginBottom: 12,
+    marginBottom: 4,
   },
-  confirmButton: {
-    backgroundColor: '#34C759',
+  cardActions: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
   },
+  confirmButton: {
+    backgroundColor: '#34C759',
+  },
   confirmButtonText: {
     color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  editButton: {
+    backgroundColor: '#E5E5EA',
+  },
+  editButtonText: {
+    color: '#000',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+    color: '#333',
+  },
+  modalInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
+  },
+  notesInput: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  errorText: {
+    color: '#FF3B30',
+    marginBottom: 16,
+    fontSize: 14,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#007AFF',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  cancelButton: {
+    backgroundColor: '#E5E5EA',
+  },
+  cancelButtonText: {
+    color: '#000',
     fontWeight: '600',
     fontSize: 16,
   },
