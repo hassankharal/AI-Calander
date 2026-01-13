@@ -42,7 +42,12 @@ export const findConflicts = async (startAt: string, endAt: string, excludeEvent
     });
 };
 
+import { createId } from '../lib/id';
+
+// ...
+
 export const addEvent = async (input: {
+    id?: string;
     title: string;
     startAt: string;
     endAt: string;
@@ -52,7 +57,7 @@ export const addEvent = async (input: {
 }): Promise<Event> => {
     const events = await getEvents();
     const newEvent: Event = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        id: input.id || createId(),
         title: input.title,
         startAt: input.startAt,
         endAt: input.endAt,

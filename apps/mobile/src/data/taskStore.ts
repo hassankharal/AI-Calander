@@ -44,10 +44,14 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
     }
 };
 
-export const addTask = async (input: { title: string; notes?: string; dueDate?: string }): Promise<Task> => {
+import { createId } from '../lib/id';
+
+// ... (imports)
+
+export const addTask = async (input: { id?: string; title: string; notes?: string; dueDate?: string }): Promise<Task> => {
     const tasks = await getTasks();
     const newTask: Task = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        id: input.id || createId(),
         title: input.title,
         notes: input.notes,
         dueDate: input.dueDate,

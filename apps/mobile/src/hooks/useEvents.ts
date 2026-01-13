@@ -22,6 +22,7 @@ export const useEvents = () => {
     }, [loadEvents]);
 
     const addEvent = async (input: {
+        id?: string;
         title: string;
         startAt: string;
         endAt: string;

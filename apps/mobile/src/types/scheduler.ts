@@ -7,8 +7,12 @@ export interface ChatMessage {
 
 export interface Proposal {
     id: string;
-    type: 'task';
+    type: 'task' | 'event';
     title: string;
     notes?: string;
-    dueDate?: string; // YYYY-MM-DD
+    dueDate?: string; // YYYY-MM-DD (for tasks)
+    startAt?: string; // ISO datetime (for events)
+    endAt?: string;   // ISO datetime (for events)
+    location?: string;
+    confidence?: number;
 }

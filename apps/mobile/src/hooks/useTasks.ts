@@ -23,7 +23,7 @@ export const useTasks = () => {
         loadTasks();
     }, [loadTasks]);
 
-    const addTask = async (input: { title: string; notes?: string; dueDate?: string }) => {
+    const addTask = async (input: { id?: string; title: string; notes?: string; dueDate?: string }) => {
         await TaskStore.addTask(input);
         await loadTasks();
     };
