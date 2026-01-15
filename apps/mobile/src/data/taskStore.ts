@@ -58,26 +58,60 @@ export const addTask = async (input: { id?: string; title: string; notes?: strin
         completed: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        completedAt: null,
+        scheduledEventId: null
     };
 
     const updatedTasks = [...tasks, newTask];
-    // Sort before saving to ensure consistency
     const sortedTasks = sortTasks(updatedTasks);
     await saveTasks(sortedTasks);
     return newTask;
 };
 
-export const toggleTaskCompleted = async (id: string): Promise<void> => {
+// Use this for Undo functionality
+export const restoreTask = async (task: Task): Promise<void> => {
     const tasks = await getTasks();
-    const updatedTasks = tasks.map(t =>
-        t.id === id ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() } : t
-    );
+    // Avoid duplicates
+    if (tasks.find(t => t.id === task.id)) return;
+    
+    // Ensure it's active if we are restoring? Or keep original state?
+    // Usually undoing a schedule means it goes back to 'pending'.
+    // If we restore a 'completed' task, it should stay completed?
+    // The requirement says "Undo should restore both the event and the task".
+    // Usually this is about "Undo Schedule". So task should be incomplete.
+    
+    const updatedTasks = [...tasks, task];
     await saveTasks(sortTasks(updatedTasks));
+};
+
+export const completeTask = async (id: string): Promise<void> => {
+    const tasks = await getTasks();
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t => {
+        if (t.id === id) {
+             const isComplete = !t.completed; // Toggle
+             return {
+                 ...t,
+                 completed: isComplete,
+                 completedAt: isComplete ? now : null,
+                 updatedAt: now
+             };
+        }
+        return t;
+    });
+    await saveTasks(sortTasks(updatedTasks));
+};
+
+export const attachScheduledEvent = async (taskId: string, eventId: string): Promise<void> => {
+     const tasks = await getTasks();
+     const updatedTasks = tasks.map(t => 
+         t.id === taskId ? { ...t, scheduledEventId: eventId, updatedAt: new Date().toISOString() } : t
+     );
+     await saveTasks(sortTasks(updatedTasks));
 };
 
 export const deleteTask = async (id: string): Promise<void> => {
     const tasks = await getTasks();
     const updatedTasks = tasks.filter(t => t.id !== id);
-    // No need to resort if we just remove one, but good practice if sort depended on other factors
     await saveTasks(updatedTasks);
 };

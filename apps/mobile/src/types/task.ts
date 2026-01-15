@@ -6,4 +6,6 @@ export interface Task {
   completed: boolean;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string | null;
+  scheduledEventId?: string | null;
 }

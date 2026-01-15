@@ -18,15 +18,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
+import { useUserMemory } from '../hooks/useUserMemory';
 import { callAiScheduler } from '../lib/aiClient';
-import { createId } from '../lib/id'; // Fix import extension
+import { createId } from '../lib/id';
 import { ChatMessage, Proposal } from '../types/scheduler';
 import { Event } from '../types/event';
 
 // --- Helper Logic for Conflicts ---
 
 const DEFAULT_EVENT_MINUTES = 60;
-const TRAVEL_BUFFER_MINUTES = 15;
 
 function addMinutes(isoString: string, minutes: number): string {
   const d = new Date(isoString);
@@ -46,6 +46,7 @@ function overlaps(startA: string, endA: string, startB: string, endB: string): b
 export default function SchedulerScreen() {
   const { addTask, tasks } = useTasks();
   const { events, addEvent, deleteEvent } = useEvents();
+  const { memory } = useUserMemory();
 
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -80,14 +81,15 @@ export default function SchedulerScreen() {
     setPendingProposals([]);
     setConflicts([]);
 
+    // Construct Context
     const payload = {
       message: userMsg.text,
       nowIso: new Date().toISOString(),
-      timezone: 'America/Winnipeg',
+      timezone: memory?.timezone || "America/Winnipeg",
       context: {
         tasks: tasks.filter(t => !t.completed),
         events: events,
-        prefs: { defaultEventMinutes: DEFAULT_EVENT_MINUTES }
+        prefs: memory || null
       }
     };
 
@@ -105,12 +107,12 @@ export default function SchedulerScreen() {
       setMessages(prev => [...prev, aiMsg]);
 
       if (data.mode === 'proposal' && data.proposals) {
-        // Post-process proposals: set default endAt if missing for events
+        // Post-process proposals: set default endAt if missing
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const processedProposals: Proposal[] = data.proposals.map((p: any) => {
           const safeP = { ...p, id: p.id || createId() };
           if (safeP.type === 'event' && safeP.startAt && !safeP.endAt) {
-            safeP.endAt = addMinutes(safeP.startAt, DEFAULT_EVENT_MINUTES);
+            safeP.endAt = addMinutes(safeP.startAt, memory?.defaultEventMinutes || DEFAULT_EVENT_MINUTES);
           }
           return safeP;
         });
@@ -137,15 +139,16 @@ export default function SchedulerScreen() {
 
     proposals.forEach(p => {
       if (p.type === 'event' && p.startAt && p.endAt) {
-        const hasBuffer = !!p.location; // Apply buffer logic if location is set
-        const buffer = hasBuffer ? TRAVEL_BUFFER_MINUTES : 0;
+        // No travel buffer logic for now as requested
+        const buffer = memory?.bufferBetweenEventsMinutes || 0;
 
         // Effective range with buffer
         const checkStart = addMinutes(p.startAt, -buffer);
         const checkEnd = addMinutes(p.endAt, buffer);
 
         const conflict = events.find(e => {
-          const eBuffer = e.location ? TRAVEL_BUFFER_MINUTES : 0;
+          // We apply buffer to existing events too to ensure gap
+          const eBuffer = memory?.bufferBetweenEventsMinutes || 0;
           const eStart = addMinutes(e.startAt, -eBuffer);
           const eEnd = addMinutes(e.endAt, eBuffer);
           return overlaps(checkStart, checkEnd, eStart, eEnd);
@@ -162,11 +165,9 @@ export default function SchedulerScreen() {
   const getNextFreeSlot = (proposal: Proposal) => {
     if (!proposal.startAt || !proposal.endAt) return;
     const duration = getDurationMinutes(proposal.startAt, proposal.endAt);
-    let candidateStart = new Date(proposal.startAt); // Start search from proposed time
+    const candidateStart = new Date(proposal.startAt);
 
-    // Search constraints
-    const hasBuffer = !!proposal.location;
-    const buffer = hasBuffer ? TRAVEL_BUFFER_MINUTES : 0;
+    const buffer = memory?.bufferBetweenEventsMinutes || 0;
 
     // Look up to 7 days ahead
     for (let i = 0; i < 96 * 7; i++) { // 15 min chunks
@@ -179,17 +180,15 @@ export default function SchedulerScreen() {
       const checkEnd = addMinutes(endIso, buffer);
 
       const isBlocked = events.some(e => {
-        const eBuffer = e.location ? TRAVEL_BUFFER_MINUTES : 0;
+        const eBuffer = memory?.bufferBetweenEventsMinutes || 0;
         const eStart = addMinutes(e.startAt, -eBuffer);
         const eEnd = addMinutes(e.endAt, eBuffer);
         return overlaps(checkStart, checkEnd, eStart, eEnd);
       });
 
       if (!isBlocked) {
-        // Found it! Update proposal
         const updated = { ...proposal, startAt: startIso, endAt: endIso };
         setPendingProposals(prev => prev.map(p => p.id === proposal.id ? updated : p));
-        // Remove conflict
         setConflicts(prev => prev.filter(c => c.proposalId !== proposal.id));
         Alert.alert("Slot Found", `Moved to ${candidateStart.toLocaleString()}`);
         return;
@@ -213,27 +212,22 @@ export default function SchedulerScreen() {
       return p;
     }));
     // Re-check conflicts after duration change
-    // Note: In a real app we'd debounce this or effectively re-run checkConflicts
-    setTimeout(() => checkConflicts(pendingProposals), 0); // Simplified re-check
+    setTimeout(() => checkConflicts(pendingProposals), 0);
   };
 
   // --- Saving & Undo ---
 
   const handleHoldComplete = async (proposal: Proposal) => {
-    // 1. Resolve conflicts if "Replace" chosen (implicit logic needed? For now we just save)
-    // If conflicting logic was "Replace Existing", we would need to delete the conflicting event first.
-    // We'll trust the user used the buttons "Schedule Anyway" or "Replace" before holding.
-
     const newId = createId();
     try {
       if (proposal.type === 'task') {
         await addTask({
-          id: newId, // Pass ID if addTask supports it (we ensure createId used inside if not)
+          id: newId,
           title: proposal.title,
           notes: proposal.notes,
           dueDate: proposal.dueDate
         });
-        setLastAction({ type: 'task', id: newId }); // Assume we can track the ID
+        setLastAction({ type: 'task', id: newId });
       } else {
         if (proposal.startAt && proposal.endAt) {
           await addEvent({
@@ -271,17 +265,10 @@ export default function SchedulerScreen() {
 
   const handleUndo = async () => {
     if (!lastAction) return;
-    // Depending on type, delete
-    // Note: useTasks and useEvents need delete capabilities exposed
-    // Assuming deleteEvent(id) and deleteTask(id) exist or similar
     try {
-      // We need to implement delete based on the hook API.
-      // useEvents -> deleteEvent(id)
-      // useTasks -> deleteTask(id)
       if (lastAction.type === 'event') {
         await deleteEvent(lastAction.id);
       } else {
-        // await deleteTask(lastAction.id); // Assuming this exists or needed
         console.warn("Delete Task via Undo not strictly implemented in hook yet");
       }
       Alert.alert("Undone", "Item removed.");
@@ -294,7 +281,6 @@ export default function SchedulerScreen() {
   const resolveConflictReplace = async (proposal: Proposal, conflictEvent: Event) => {
     await deleteEvent(conflictEvent.id);
     setConflicts(prev => prev.filter(c => c.event.id !== conflictEvent.id));
-    // Just remove the conflict record, user can now Hold to Confirm
   };
 
 
@@ -387,12 +373,6 @@ export default function SchedulerScreen() {
                 ]}>{mins}m</Text>
               </TouchableOpacity>
             ))}
-            {proposal.location && (
-              <View style={styles.travelTag}>
-                <Ionicons name="car-outline" size={12} color="#666" />
-                <Text style={styles.travelText}>+15m</Text>
-              </View>
-            )}
           </View>
         )}
 
@@ -441,6 +421,10 @@ export default function SchedulerScreen() {
       </View>
     );
   };
+
+  useEffect(() => {
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages, pendingProposals, loading]);
 
   return (
     <SafeAreaView style={styles.container}>
