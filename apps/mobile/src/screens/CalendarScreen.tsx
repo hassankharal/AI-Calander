@@ -29,6 +29,9 @@ import {
 } from '../lib/dateUtils';
 import { useFocusEffect } from '@react-navigation/native';
 import { useToast } from '../components/ToastBanner';
+import { colors } from '../theme';
+import { themeStyles } from '../theme/styles';
+import { applyLayoutSpring } from '../lib/layoutSpring';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -62,7 +65,7 @@ export default function CalendarScreen() {
   );
 
   useEffect(() => {
-    if (__DEV__) console.log("[CALENDAR] events received:", events.length);
+    // Log cleanup
   }, [events.length]);
 
   // Generate the 42-day grid
@@ -97,8 +100,14 @@ export default function CalendarScreen() {
 
 
   // Navigation
-  const prevMonth = () => setCurrentMonth(addMonths(currentMonth, -1));
-  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const prevMonth = () => {
+    applyLayoutSpring();
+    setCurrentMonth(addMonths(currentMonth, -1));
+  };
+  const nextMonth = () => {
+    applyLayoutSpring();
+    setCurrentMonth(addMonths(currentMonth, 1));
+  };
   const jumpToday = () => {
     const now = new Date();
     setCurrentMonth(now);
@@ -232,6 +241,7 @@ export default function CalendarScreen() {
           !isCurrentMonth && styles.otherMonthCell
         ]}
         onPress={() => {
+          applyLayoutSpring();
           setSelectedDate(date);
           if (!isSameMonth(date, currentMonth)) {
             setCurrentMonth(date);
@@ -255,19 +265,22 @@ export default function CalendarScreen() {
   };
 
   const renderAgendaItem = ({ item }: { item: Event }) => (
-    <TouchableOpacity style={styles.agendaItem} onPress={() => openEditModal(item)}>
+    <TouchableOpacity
+      style={[themeStyles.glassCard, styles.agendaItem]}
+      onPress={() => openEditModal(item)}
+    >
       <View style={styles.agendaTimeBox}>
-        <Text style={styles.agendaTime}>{formatTimeRange(item.startAt, item.endAt)}</Text>
+        <Text style={themeStyles.muted}>{formatTimeRange(item.startAt, item.endAt)}</Text>
       </View>
       <View style={styles.agendaContent}>
-        <Text style={styles.agendaTitle}>{item.title}</Text>
-        {item.location && <Text style={styles.agendaLocation}>📍 {item.location}</Text>}
+        <Text style={themeStyles.body}>{item.title}</Text>
+        {item.location && <Text style={themeStyles.muted}>📍 {item.location}</Text>}
       </View>
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={themeStyles.screen}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
@@ -412,24 +425,54 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  // container handled by themeStyles.screen
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee'
+    marginTop: 10,
+    marginHorizontal: 16,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderBottomColor: colors.borderGlass
   },
-  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: colors.textPrimary },
   navBtn: { padding: 8 },
-  todayBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#f0f0f0', borderRadius: 12, marginRight: 8 },
-  todayBtnText: { fontSize: 12, color: '#007AFF', fontWeight: '600' },
-  addEventBtn: { backgroundColor: '#007AFF', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  todayBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 12,
+    marginRight: 8
+  },
+  todayBtnText: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
+  addEventBtn: {
+    backgroundColor: colors.cyan,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
 
-  weekRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 8 },
-  weekHeader: { flex: 1, textAlign: 'center', fontSize: 13, color: '#888', fontWeight: '600' },
+  weekRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderGlass,
+    paddingVertical: 8
+  },
+  weekHeader: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '600'
+  },
 
   grid: { paddingVertical: 10 },
   gridRowWrap: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -439,61 +482,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCell: { backgroundColor: '#007AFF', borderRadius: 20 },
+  selectedCell: { backgroundColor: colors.cyan, borderRadius: 20 },
   otherMonthCell: { opacity: 0.3 },
 
-  cellText: { fontSize: 16, color: '#333' },
-  selectedText: { color: '#fff', fontWeight: 'bold' },
-  otherMonthText: { color: '#999' },
-  todayText: { color: '#007AFF', fontWeight: 'bold' },
+  cellText: { fontSize: 16, color: colors.textPrimary },
+  selectedText: { color: '#000', fontWeight: 'bold' }, // Black text on cyan
+  otherMonthText: { color: colors.textSecondary },
+  todayText: { color: colors.cyan, fontWeight: 'bold' },
 
   dot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
-  dotNormal: { backgroundColor: '#007AFF' },
-  dotSelected: { backgroundColor: '#fff' },
+  dotNormal: { backgroundColor: colors.cyan },
+  dotSelected: { backgroundColor: '#000' }, // visible on cyan
 
   agendaHeader: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#eee'
+    borderColor: colors.borderGlass,
+    borderRadius: 18,
+    marginHorizontal: 16, // Inset to match floating look
+    marginBottom: 8,
   },
-  agendaDate: { fontSize: 14, fontWeight: '600', color: '#555' },
+  agendaDate: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
 
-  listContent: { paddingBottom: 20 },
+  listContent: { paddingBottom: 20, paddingHorizontal: 16, paddingTop: 10 },
   agendaItem: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    marginBottom: 10,
     alignItems: 'center'
   },
   agendaTimeBox: { width: 80 },
-  agendaTime: { fontSize: 12, color: '#666' },
-  agendaContent: { flex: 1, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: '#007AFF' },
-  agendaTitle: { fontSize: 16, fontWeight: '500', color: '#000' },
-  agendaLocation: { fontSize: 12, color: '#888', marginTop: 2 },
+  // agendaTime handled by themeStyles
+  agendaContent: { flex: 1, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.cyan },
+  // agendaTitle, agendaLocation handled by themeStyles
 
   emptyContainer: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 14 },
+  emptyText: { color: colors.textSecondary, fontSize: 14 },
 
   // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: colors.obsidian,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderColor: colors.borderGlass,
+    borderWidth: 1,
+    padding: 20,
+    maxHeight: '90%'
+  },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold' },
-  saveBtnText: { color: '#007AFF', fontSize: 18, fontWeight: 'bold' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: colors.textPrimary },
+  saveBtnText: { color: colors.cyan, fontSize: 18, fontWeight: 'bold' },
 
-  titleInput: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 5 },
+  titleInput: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderGlass,
+    paddingVertical: 5,
+    color: colors.textPrimary,
+  },
   row: { flexDirection: 'row', gap: 15, marginBottom: 15 },
   halfInput: { flex: 1 },
-  label: { fontSize: 12, color: '#666', marginBottom: 5 },
-  input: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#f9f9f9', marginBottom: 15 },
+  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 5 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: colors.glass,
+    marginBottom: 15,
+    color: colors.textPrimary
+  },
   notesInput: { height: 80, textAlignVertical: 'top' },
 
   modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, alignItems: 'center' },
-  cancelText: { fontSize: 16, color: '#666' },
-  deleteText: { fontSize: 16, color: 'red' }
+  cancelText: { fontSize: 16, color: colors.textSecondary },
+  deleteText: { fontSize: 16, color: '#FF3B30' }
 });

@@ -5,6 +5,12 @@ import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
 import { Task } from '../types/task';
 import { Event } from '../types/event';
+import {
+  colors,
+  typography,
+  surfaces
+} from '../theme';
+import { GhostEvent } from '../types/ghost';
 
 export default function HomeScreen() {
   const { tasks, refresh: refreshTasks } = useTasks();
@@ -18,11 +24,13 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    if (__DEV__) {
-      console.log("[HOME] events received:", events.length);
-      console.log("[HOME] tasks received:", tasks.length);
-    }
+    // Log cleanup
   }, [events.length, tasks.length]);
+
+  const [ghostEvents] = React.useState<GhostEvent[]>([]);
+
+  // Calibration Fade Logic moved down
+
 
   const { todayMetric, next7DaysMetric, todayTasks, next7DaysTasks } = useMemo(() => {
     const today = new Date();
@@ -100,9 +108,30 @@ export default function HomeScreen() {
     return "Balanced day. Maintain momentum.";
   }, [events]);
 
+  // Calibration Formatting: One sentence, no emojis, no greeting.
+  const formattedCalibration = useMemo(() => {
+    let text = dailyCalibration;
+    // Strip emojis
+    text = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
+    // Ensure single sentence (simple heuristic: take first sentence)
+    const sentences = text.split(/[.!?]/).filter(s => s.trim().length > 0);
+    return sentences[0] ? sentences[0].trim() + "." : text;
+  }, [dailyCalibration]);
+
   useEffect(() => {
     if (__DEV__) console.log("[HOME] daily calibration:", dailyCalibration);
   }, [dailyCalibration]);
+
+  // Calibration Fade Logic
+  const calibrationOpacity = useMemo(() => new Animated.Value(0), []);
+  useEffect(() => {
+    calibrationOpacity.setValue(0);
+    Animated.timing(calibrationOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [dailyCalibration, calibrationOpacity]);
 
   const renderTaskSnippet = (task: Task) => (
     <View key={task.id} style={styles.snippet}>
@@ -123,6 +152,13 @@ export default function HomeScreen() {
       </View>
     );
   };
+
+  const renderGhostSnippet = (ghost: GhostEvent) => (
+    <View key={ghost.id} style={[styles.snippet, { opacity: 0.5, borderLeftWidth: 2, borderLeftColor: colors.textSecondary }]}>
+      <Text style={[styles.snippetTitle, { fontStyle: 'italic' }]}>👻 {ghost.title}</Text>
+      <Text style={styles.snippetDate}>Suggested</Text>
+    </View>
+  );
 
   // --- Settling Animation ---
   const [isSettled, setIsSettled] = React.useState(false);
@@ -160,12 +196,17 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         style={!isSettled ? { opacity: opacityAnim } : undefined}
       >
-        <Text style={styles.headerTitle}>Dashboard</Text>
+        <Text style={[styles.headerTitle]}>Dashboard</Text>
 
         {/* Morning Calibration */}
-        <View style={styles.calibrationSection}>
-          <Text style={styles.calibrationText}>{dailyCalibration}</Text>
-        </View>
+        <Animated.View style={[
+          styles.calibrationCard,
+          { opacity: calibrationOpacity }
+        ]}>
+          <Text style={styles.calibrationText}>
+            {formattedCalibration}
+          </Text>
+        </Animated.View>
 
         {/* Next Event Section */}
         <View style={[styles.section, styles.highlightSection]}>
@@ -208,6 +249,11 @@ export default function HomeScreen() {
           ) : (
             upcomingEvents.map(renderEventSnippet)
           )}
+          {ghostEvents.length > 0 && (
+            <View style={{ marginTop: 8 }}>
+              {ghostEvents.map(renderGhostSnippet)}
+            </View>
+          )}
         </View>
 
         {/* Tasks Next 7 Days */}
@@ -233,31 +279,39 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
     paddingTop: Platform.OS === 'android' ? 25 : 0,
+    backgroundColor: colors.obsidian,
   },
   scrollContent: {
     padding: 20,
   },
   headerTitle: {
+    ...typography.headline,
     fontSize: 28,
-    fontWeight: 'bold',
+    color: colors.textPrimary,
     marginBottom: 20,
-    color: '#333',
+  },
+  calibrationCard: {
+    ...surfaces.glassCard,
+    padding: 16,
+    marginVertical: 16,
+    borderRadius: 12,
+  },
+  calibrationText: {
+    ...typography.body,
+    fontSize: 15,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
   section: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
+    ...surfaces.glassCard,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   highlightSection: {
-    backgroundColor: '#007AFF', // Blue for next event
+    ...surfaces.glassCard,
+    borderColor: colors.cyan, // Subtle accent for "Next Event" if desired, or keep generic
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -266,82 +320,80 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    ...typography.caption,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   sectionTitleWhite: {
+    ...typography.headline,
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   badge: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: colors.borderGlass,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   badgeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 12,
   },
   emptyText: {
-    color: '#999',
+    ...typography.body,
+    color: colors.textSecondary,
     fontStyle: 'italic',
   },
   emptyTextWhite: {
-    color: 'rgba(255,255,255,0.7)',
+    ...typography.body,
+    color: colors.textSecondary,
     fontStyle: 'italic',
   },
   snippet: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.borderGlass,
   },
   snippetTitle: {
+    ...typography.body,
     fontSize: 16,
-    color: '#444',
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   snippetDate: {
+    ...typography.caption,
     fontSize: 12,
-    color: '#888',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   snippetLocation: {
+    ...typography.caption,
     fontSize: 12,
-    color: '#007AFF',
+    color: colors.cyan,
     marginTop: 2,
   },
   nextEventContent: {
     marginTop: 5,
   },
   nextEventTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
+    ...typography.headline,
+    fontSize: 24,
+    color: colors.textPrimary,
+    marginBottom: 4,
   },
   nextEventTime: {
+    ...typography.body,
     fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: 5,
+    color: colors.cyan,
+    marginBottom: 4,
   },
   nextEventLoc: {
+    ...typography.caption,
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 5,
+    color: colors.textSecondary,
   },
-  calibrationSection: {
-    marginBottom: 20,
-    marginTop: -5,
-  },
-  calibrationText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-    fontStyle: 'italic',
-    letterSpacing: 0.5,
-  }
 });

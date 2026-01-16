@@ -12,6 +12,9 @@ import { Proposal } from '../types/scheduler';
 import { createId } from '../lib/id';
 import { findCandidateSlots, CandidateSlot } from '../lib/freeSlotFinder';
 import { useToast } from '../components/ToastBanner';
+import { colors } from '../theme';
+import { themeStyles } from '../theme/styles';
+import { applyLayoutSpring } from '../lib/layoutSpring';
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
 
@@ -51,6 +54,8 @@ export default function TasksScreen() {
 
   // --- Task Operations ---
 
+  // --- Task Operations ---
+
   const handleAddTask = async () => {
     if (!newTitle.trim()) {
       Alert.alert('Error', 'Title is required');
@@ -61,6 +66,7 @@ export default function TasksScreen() {
       dueDate: newDueDate.trim() || undefined,
       isAnchor
     });
+    applyLayoutSpring();
     setNewTitle('');
     setNewDueDate('');
     setIsAnchor(false);
@@ -94,8 +100,8 @@ export default function TasksScreen() {
           title: cleanTitle || p.title
         })));
       }
-    } catch (e) {
-      console.log("AI Enhancement failed/skipped (harmless)", e);
+    } catch {
+      // AI Enhancement failed/skipped (harmless)
     }
   }, [memory]);
 
@@ -184,9 +190,8 @@ export default function TasksScreen() {
         showUndoBar();
       }
 
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to schedule event.");
-      console.error(e);
     }
   };
 
@@ -235,6 +240,7 @@ export default function TasksScreen() {
 
   const handleUndo = async () => {
     if (lastAction) {
+      applyLayoutSpring();
       // Restore task
       await restoreTask(lastAction.task);
       // Delete event
@@ -249,6 +255,7 @@ export default function TasksScreen() {
   const handleComplete = async (task: Task) => {
     // If it's already completed (completedAt is set), we are marking incomplete
     const isCompleting = !task.completed;
+    applyLayoutSpring();
     await completeTask(task.id);
     showToast(isCompleting ? "Completed ✅" : "Marked incomplete");
   };
@@ -256,7 +263,7 @@ export default function TasksScreen() {
   // --- Renderers ---
 
   const renderItem = ({ item }: { item: Task }) => (
-    <View style={styles.taskItem}>
+    <View style={themeStyles.glassCard}>
       {/* Complete Action */}
       <TouchableOpacity
         style={styles.checkboxContainer}
@@ -293,11 +300,15 @@ export default function TasksScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Delete */}
       <TouchableOpacity
         onPress={() => Alert.alert('Delete', 'Delete this task?', [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => deleteTask(item.id) }
+          {
+            text: 'Delete', style: 'destructive', onPress: async () => {
+              applyLayoutSpring();
+              deleteTask(item.id);
+            }
+          }
         ])}
         style={styles.deleteButton}
       >
@@ -307,7 +318,7 @@ export default function TasksScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={themeStyles.screen}>
       <View style={styles.header}>
         <Text style={styles.title}>Tasks</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setCreateModalVisible(true)}>
@@ -528,8 +539,7 @@ export default function TasksScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
+    // handled by themeStyles.screen
   },
   scroll: {
     flex: 1,
@@ -539,16 +549,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: colors.borderGlass,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '300',
+    color: colors.textPrimary,
+    letterSpacing: 0.6
   },
   addButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -558,10 +571,13 @@ const styles = StyleSheet.create({
   taskItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.glass,
+    borderRadius: 18,
+    marginHorizontal: 16,
+    marginVertical: 6,
     padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
   },
   checkboxContainer: {
     paddingRight: 10
@@ -571,15 +587,15 @@ const styles = StyleSheet.create({
   },
   taskTitle: {
     fontSize: 16,
-    color: '#333',
+    color: colors.textPrimary,
   },
   completedText: {
     textDecorationLine: 'line-through',
-    color: '#999',
+    color: colors.textSecondary,
   },
   dueDate: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 4,
   },
   scheduleButton: {
@@ -590,38 +606,43 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   emptyContainer: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 16 },
+  emptyText: { color: colors.textSecondary, fontSize: 16 },
 
   completedSection: {
     marginTop: 20,
-    backgroundColor: '#f9f9f9'
+    backgroundColor: 'transparent'
   },
   sectionHeader: {
     padding: 15,
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#666',
-    backgroundColor: '#eee'
+    color: colors.textSecondary,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.obsidian,
     borderRadius: 15,
     padding: 20,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10
   },
   scheduleModalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.obsidian,
     borderRadius: 15,
     padding: 20,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
     maxHeight: '80%'
   },
   modalTitle: {
@@ -629,14 +650,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+    color: colors.textPrimary
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.borderGlass,
     borderRadius: 8,
     padding: 12,
     marginBottom: 15,
     fontSize: 16,
+    color: colors.textPrimary,
+    backgroundColor: colors.glass
   },
   modalButtons: {
     flexDirection: 'row',
@@ -648,20 +672,23 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: 'center',
     marginRight: 10,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.glass,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderGlass
   },
   saveButton: {
     flex: 1,
     padding: 15,
     alignItems: 'center',
     marginLeft: 10,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.cyan,
     borderRadius: 8,
   },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.textPrimary
   },
 
   // Undo Bar
@@ -670,7 +697,9 @@ const styles = StyleSheet.create({
     bottom: 40,
     left: 20,
     right: 20,
-    backgroundColor: '#333',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
     borderRadius: 8,
     padding: 16,
     flexDirection: 'row',
@@ -681,47 +710,64 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 10
   },
-  undoText: { color: '#fff', fontWeight: 'bold' },
-  undoAction: { color: '#64B5F6', fontWeight: 'bold' },
+  undoText: { color: colors.textPrimary, fontWeight: 'bold' },
+  undoAction: { color: colors.cyan, fontWeight: 'bold' },
 
   // Scheduling
-  label: { fontSize: 14, fontWeight: '600', color: '#555', marginBottom: 8, marginTop: 8 },
+  label: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 8, marginTop: 8 },
   durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#f0f0f0' },
-  pillActive: { backgroundColor: '#007AFF' },
-  pillText: { fontSize: 14, color: '#333' },
-  pillTextActive: { color: '#fff' },
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass
+  },
+  pillActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
+  pillText: { fontSize: 14, color: colors.textSecondary },
+  pillTextActive: { color: '#000' },
 
   actionGrid: { gap: 10, marginTop: 10 },
-  actionBtnPrimary: { backgroundColor: '#34C759', padding: 16, borderRadius: 12, alignItems: 'center' },
-  actionBtnOutline: { borderWidth: 1, borderColor: '#ccc', padding: 16, borderRadius: 12, alignItems: 'center' },
-  actionBtnTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  actionBtnSub: { fontSize: 12, color: '#666' },
+  actionBtnPrimary: { backgroundColor: colors.moss, padding: 16, borderRadius: 12, alignItems: 'center' }, // Moss for primary
+  actionBtnOutline: { borderWidth: 1, borderColor: colors.borderGlass, padding: 16, borderRadius: 12, alignItems: 'center' },
+  actionBtnTitle: { fontSize: 16, fontWeight: 'bold', color: '#000' }, // Moss/Outline text
+  actionBtnSub: { fontSize: 12, color: '#333' },
 
   proposalList: { gap: 8, marginBottom: 10 },
-  proposalBtn: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#f9f9f9', borderLeftWidth: 3, borderLeftColor: '#007AFF', borderRadius: 4 },
-  proposalText: { fontSize: 16 },
+  proposalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: colors.glass,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.cyan,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.borderGlass
+  },
+  proposalText: { fontSize: 16, color: colors.textPrimary },
 
   errorBox: { alignItems: 'center', marginBottom: 15 },
 
-  customContainer: { borderTopWidth: 1, borderColor: '#eee', paddingTop: 10 },
+  customContainer: { borderTopWidth: 1, borderColor: colors.borderGlass, paddingTop: 10 },
   rowScroll: { flexDirection: 'row', marginBottom: 15 },
-  dayChip: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center', marginRight: 6 },
-  dayChipActive: { backgroundColor: '#007AFF' },
-  dayChipText: { fontSize: 10, color: '#333' },
-  dayChipTextActive: { color: '#fff', fontWeight: 'bold' },
-  timeInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 18, textAlign: 'center', marginBottom: 12 },
-  saveBtnText: { color: '#fff', fontWeight: 'bold' },
+  dayChip: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.glass, alignItems: 'center', justifyContent: 'center', marginRight: 6, borderWidth: 1, borderColor: colors.borderGlass },
+  dayChipActive: { backgroundColor: colors.cyan },
+  dayChipText: { fontSize: 10, color: colors.textSecondary },
+  dayChipTextActive: { color: '#000', fontWeight: 'bold' },
+  timeInput: { borderWidth: 1, borderColor: colors.borderGlass, borderRadius: 8, padding: 12, fontSize: 18, textAlign: 'center', marginBottom: 12, color: colors.textPrimary, backgroundColor: colors.glass },
+  saveBtnText: { color: '#000', fontWeight: 'bold' },
   cancelLink: { alignItems: 'center', padding: 10 },
-  cancelLinkText: { color: '#666' },
+  cancelLinkText: { color: colors.textSecondary },
 
   closeModalBtn: { marginTop: 20, alignItems: 'center', padding: 10 },
-  closeModalText: { color: '#666' },
+  closeModalText: { color: colors.textSecondary },
 
   anchorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  anchorLabel: { fontSize: 16, color: '#333' },
-  anchorToggle: { width: 50, height: 30, borderRadius: 15, backgroundColor: '#eee', justifyContent: 'center', padding: 2 },
-  anchorToggleActive: { backgroundColor: '#34C759' },
+  anchorLabel: { fontSize: 16, color: colors.textPrimary },
+  anchorToggle: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.glass, justifyContent: 'center', padding: 2, borderWidth: 1, borderColor: colors.borderGlass },
+  anchorToggleActive: { backgroundColor: colors.moss },
   anchorKnob: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff' },
   anchorKnobActive: { alignSelf: 'flex-end' },
 

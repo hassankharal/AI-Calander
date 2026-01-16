@@ -9,11 +9,11 @@ import {
   Platform,
   StyleSheet,
   SafeAreaView,
-  ActivityIndicator,
   TouchableWithoutFeedback,
   Animated,
   Alert
 } from 'react-native';
+import { applyLayoutSpring } from '../lib/layoutSpring';
 import { Ionicons } from '@expo/vector-icons';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
@@ -29,6 +29,8 @@ import {
 } from '../state/schedulerSessionStore';
 import { buildEventFromIntent } from '../lib/commitIntent';
 import { classifyEnergy, getDefaultEnergyProfile, getWindowStartIso } from '../lib/energyProfile';
+import { PulseGlow } from '../components/PulseGlow';
+import { colors, radii } from '../theme/tokens';
 
 // --- Helper Logic for Conflicts ---
 
@@ -68,6 +70,50 @@ const INITIAL_SESSION_STATE: SchedulerSessionState = {
   lastQuestion: null,
   lastProposals: null,
   lastUserMessageId: null,
+};
+
+const ProposalAnimator = ({ children }: { children: React.ReactNode }) => {
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [translateY] = useState(() => new Animated.Value(20));
+  const [borderColor] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        stiffness: 120,
+        damping: 20,
+        useNativeDriver: true,
+      })
+    ]).start();
+
+    // Highlight Flash
+    Animated.sequence([
+      Animated.timing(borderColor, { toValue: 1, duration: 300, useNativeDriver: false }), // Flash ON
+      Animated.timing(borderColor, { toValue: 0, duration: 1700, useNativeDriver: false }) // Slow fade OFF
+    ]).start();
+  }, [fadeAnim, translateY, borderColor]);
+
+  const borderStyle = {
+    borderColor: borderColor.interpolate({
+      inputRange: [0, 1],
+      outputRange: [colors.glassBorder, colors.cyan] // Fallback to glassBorder
+    }),
+    borderWidth: 1
+  };
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+      <Animated.View style={[styles.proposalAnimContainer, borderStyle]}>
+        {children}
+      </Animated.View>
+    </Animated.View>
+  );
 };
 
 export default function SchedulerScreen() {
@@ -302,7 +348,6 @@ export default function SchedulerScreen() {
     if (manual.length > 0) {
       setPendingProposals(manual);
       checkConflicts(manual);
-      if (__DEV__) console.log("[SCHEDULER] confirmation required", manual.map(m => m.id));
     }
   };
 
@@ -397,7 +442,6 @@ export default function SchedulerScreen() {
       }
 
       if (__DEV__) console.log(`[ENERGY] classified "${proposal.title}" as deep`);
-      if (__DEV__) console.log(`[ENERGY] search start set to ${candidateStart.toISOString()} for peak`);
     } else {
       // Shallow/Slump
       const slumpIso = getWindowStartIso(now, profile.slumpStart);
@@ -405,7 +449,6 @@ export default function SchedulerScreen() {
       candidateStart = slumpDate;
 
       if (__DEV__) console.log(`[ENERGY] classified "${proposal.title}" as shallow`);
-      if (__DEV__) console.log(`[ENERGY] search start set to ${candidateStart.toISOString()} for slump`);
     }
 
     // Ensure we don't start in the past if possible, or assume the user wants that? 
@@ -623,6 +666,8 @@ export default function SchedulerScreen() {
   };
 
 
+
+
   // --- Render ---
 
   const HoldButton = ({ onComplete }: { onComplete: () => void }) => {
@@ -636,7 +681,6 @@ export default function SchedulerScreen() {
         duration: 700,
         useNativeDriver: false
       }).start(({ finished }) => {
-        if (__DEV__) console.log("[HoldButton] animation finished:", finished);
         if (finished) {
           onComplete();
           setPressing(false);
@@ -671,69 +715,71 @@ export default function SchedulerScreen() {
     const myConflict = conflicts.find(c => c.proposalId === proposal.id);
 
     return (
-      <View key={proposal.id} style={styles.proposalCard}>
-        <View style={styles.cardHeader}>
-          <View style={styles.typeTag}>
-            <Ionicons name={iconName} size={14} color="#555" />
-            <Text style={styles.typeText}>{proposal.type.toUpperCase()}</Text>
-          </View>
-          {proposal.confidence && proposal.confidence < 0.8 && (
-            <Text style={styles.confidenceText}>Low Confidence</Text>
-          )}
-        </View>
-
-        <TextInput
-          style={styles.cardTitleInput}
-          value={proposal.title}
-          onChangeText={(text) => updateProposalTitle(proposal.id, text)}
-          selectTextOnFocus
-        />
-
-        {isEvent && proposal.startAt && proposal.endAt && (
-          <View style={styles.durationRow}>
-            {[30, 45, 60, 90].map(mins => (
-              <TouchableOpacity
-                key={mins}
-                onPress={() => updateDuration(proposal.id, mins)}
-                style={[
-                  styles.durationPill,
-                  getDurationMinutes(proposal.startAt!, proposal.endAt!) === mins && styles.durationPillActive
-                ]}
-              >
-                <Text style={[
-                  styles.durationText,
-                  getDurationMinutes(proposal.startAt!, proposal.endAt!) === mins && styles.durationTextActive
-                ]}>{mins}m</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.cardDetails}>
-          <Text style={styles.detailText}>{dateDisplay}</Text>
-          {proposal.location && <Text style={styles.detailText}>📍 {proposal.location}</Text>}
-        </View>
-
-        {myConflict && (
-          <View style={styles.conflictBox}>
-            <Text style={styles.conflictTitle}>⚠️ Conflict: &quot;{myConflict.event.title}&quot;</Text>
-            <View style={styles.conflictActions}>
-              <TouchableOpacity style={styles.conflictBtn} onPress={() => getNextFreeSlot(proposal)}>
-                <Text style={styles.conflictBtnText}>Find Next Slot</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.conflictBtn, { backgroundColor: '#FF3B30' }]}
-                onPress={() => resolveConflictReplace(proposal, myConflict.event)}
-              >
-                <Text style={[styles.conflictBtnText, { color: '#fff' }]}>Replace</Text>
-              </TouchableOpacity>
+      <ProposalAnimator key={proposal.id}>
+        <View style={[styles.proposalCard, { marginBottom: 0, borderWidth: 0 }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.typeTag}>
+              <Ionicons name={iconName} size={14} color="#555" />
+              <Text style={styles.typeText}>{proposal.type.toUpperCase()}</Text>
             </View>
-            <Text style={styles.conflictHint}>Or hold below to schedule anyway.</Text>
+            {proposal.confidence && proposal.confidence < 0.8 && (
+              <Text style={styles.confidenceText}>Low Confidence</Text>
+            )}
           </View>
-        )}
 
-        <HoldButton onComplete={() => handleHoldComplete(proposal)} />
-      </View>
+          <TextInput
+            style={styles.cardTitleInput}
+            value={proposal.title}
+            onChangeText={(text) => updateProposalTitle(proposal.id, text)}
+            selectTextOnFocus
+          />
+
+          {isEvent && proposal.startAt && proposal.endAt && (
+            <View style={styles.durationRow}>
+              {[30, 45, 60, 90].map(mins => (
+                <TouchableOpacity
+                  key={mins}
+                  onPress={() => updateDuration(proposal.id, mins)}
+                  style={[
+                    styles.durationPill,
+                    getDurationMinutes(proposal.startAt!, proposal.endAt!) === mins && styles.durationPillActive
+                  ]}
+                >
+                  <Text style={[
+                    styles.durationText,
+                    getDurationMinutes(proposal.startAt!, proposal.endAt!) === mins && styles.durationTextActive
+                  ]}>{mins}m</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.cardDetails}>
+            <Text style={styles.detailText}>{dateDisplay}</Text>
+            {proposal.location && <Text style={styles.detailText}>📍 {proposal.location}</Text>}
+          </View>
+
+          {myConflict && (
+            <View style={styles.conflictBox}>
+              <Text style={styles.conflictTitle}>⚠️ Conflict: &quot;{myConflict.event.title}&quot;</Text>
+              <View style={styles.conflictActions}>
+                <TouchableOpacity style={styles.conflictBtn} onPress={() => getNextFreeSlot(proposal)}>
+                  <Text style={styles.conflictBtnText}>Find Next Slot</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.conflictBtn, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => resolveConflictReplace(proposal, myConflict.event)}
+                >
+                  <Text style={[styles.conflictBtnText, { color: '#fff' }]}>Replace</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.conflictHint}>Or hold below to schedule anyway.</Text>
+            </View>
+          )}
+
+          <HoldButton onComplete={() => handleHoldComplete(proposal)} />
+        </View>
+      </ProposalAnimator>
     );
   };
 
@@ -757,6 +803,7 @@ export default function SchedulerScreen() {
     if (messages.length > 0) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
+    applyLayoutSpring();
   }, [messages, pendingProposals]);
 
   return (
@@ -764,8 +811,13 @@ export default function SchedulerScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Scheduler</Text>
         <TouchableOpacity onPress={handleNewChat} style={styles.newChatBtn}>
-          <Ionicons name="create-outline" size={24} color="#007AFF" />
+          <Ionicons name="create-outline" size={24} color={colors.text} />
         </TouchableOpacity>
+        {loading && (
+          <View style={{ position: 'absolute', top: 20, right: 20, pointerEvents: 'none' }}>
+            <PulseGlow active={true} size={18} color={colors.cyan} />
+          </View>
+        )}
       </View>
 
       <KeyboardAvoidingView
@@ -786,8 +838,8 @@ export default function SchedulerScreen() {
               <View style={{ paddingBottom: 100 }}>
                 {loading && (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#888" />
-                    <Text style={styles.loadingText}>Processing...</Text>
+                    <PulseGlow active={loading} size={14} color={colors.cyan} />
+                    <Text style={styles.loadingText}>Thinking...</Text>
                   </View>
                 )}
                 {pendingProposals.map(renderProposal)}
@@ -843,7 +895,7 @@ export default function SchedulerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.bg,
   },
   header: {
     flexDirection: 'row',
@@ -851,16 +903,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: colors.glassBorder,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
+    color: colors.text,
   },
   newChatBtn: {
-    padding: 4,
+    padding: 8,
   },
   listContent: {
     padding: 16,
@@ -868,7 +920,6 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
     marginBottom: 16,
-    alignItems: 'flex-end',
   },
   userRow: {
     justifyContent: 'flex-end',
@@ -880,40 +931,39 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#007AFF',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.cyan,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
-    marginBottom: 4,
+    marginTop: 8,
   },
   messageBubble: {
     maxWidth: '80%',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
   },
   userBubble: {
-    backgroundColor: '#007AFF',
+    backgroundColor: 'rgba(255,255,255,0.1)', // Brighter glass
+    borderColor: 'rgba(255,255,255,0.2)',
     borderBottomRightRadius: 4,
   },
   assistantBubble: {
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    backgroundColor: colors.glass,
+    borderColor: colors.glassBorder,
+    borderTopLeftRadius: 4,
   },
   messageText: {
     fontSize: 16,
     lineHeight: 22,
   },
   userText: {
-    color: '#fff',
+    color: colors.text,
   },
   assistantText: {
-    color: '#000',
+    color: colors.textMuted,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -923,20 +973,16 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginLeft: 8,
-    color: '#888',
+    color: colors.textMuted,
     fontSize: 14,
   },
   proposalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: colors.glass,
+    borderRadius: radii.card,
     padding: 16,
-    marginHorizontal: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -947,16 +993,18 @@ const styles = StyleSheet.create({
   typeTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.glass,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     gap: 4,
+    borderWidth: 1,
+    borderColor: colors.glassBorder
   },
   typeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#555',
+    color: colors.textMuted,
   },
   confidenceText: {
     fontSize: 12,
@@ -966,39 +1014,42 @@ const styles = StyleSheet.create({
   cardTitleInput: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
     marginBottom: 12,
     padding: 0,
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
   },
   confirmButton: {
-    backgroundColor: '#e5e5ea',
+    backgroundColor: colors.glass,
     height: 44,
     borderRadius: 12,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.glassBorder
   },
   progressFill: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: '#34C759',
+    backgroundColor: colors.cyan, // Action color allowed
+    opacity: 0.3
   },
   confirmButtonText: {
-    color: '#000',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
     zIndex: 1,
   },
   inputContainer: {
     padding: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bg,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: colors.glassBorder,
   },
   inputRow: {
     flexDirection: 'row',
@@ -1013,28 +1064,33 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
     marginRight: 4,
     fontWeight: '600'
   },
   chip: {
-    backgroundColor: '#FFE0B2',
+    backgroundColor: 'rgba(255,149,0, 0.2)', // Orange glass
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 12
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0, 0.4)'
   },
   chipText: {
     fontSize: 12,
-    color: '#E65100',
+    color: '#FF9500',
     fontWeight: '500'
   },
   input: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
+    color: colors.text,
     marginRight: 10,
     maxHeight: 100,
   },
@@ -1042,12 +1098,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.cyan,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#B4D5FF',
+    backgroundColor: colors.glassBorder,
+    opacity: 0.5
   },
 
   // Duration & Detail styles
@@ -1061,17 +1118,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder
   },
   durationPillActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.cyan,
+    borderColor: colors.cyan
   },
   durationText: {
     fontSize: 12,
-    color: '#555',
+    color: colors.textMuted,
   },
   durationTextActive: {
-    color: '#fff',
+    color: '#000',
   },
   travelTag: {
     flexDirection: 'row',
@@ -1080,11 +1140,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: '#FFEBEE',
+    backgroundColor: 'rgba(255,59,48,0.2)',
   },
   travelText: {
     fontSize: 10,
-    color: '#D32F2F',
+    color: colors.danger,
     fontWeight: '600',
   },
   cardDetails: {
@@ -1092,7 +1152,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textMuted,
     marginBottom: 4,
   },
 
@@ -1102,7 +1162,9 @@ const styles = StyleSheet.create({
     bottom: 80,
     left: 20,
     right: 20,
-    backgroundColor: '#333',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -1110,32 +1172,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
   },
   undoText: {
-    color: '#fff',
+    color: colors.text,
     fontWeight: '600',
     fontSize: 16,
   },
   undoBtnText: {
-    color: '#4DAFFF',
+    color: colors.cyan,
     fontWeight: 'bold',
     fontSize: 16,
   },
 
   // Conflict Box
   conflictBox: {
-    backgroundColor: '#FFF4E5',
+    backgroundColor: 'rgba(255,149,0,0.1)',
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#FFCC80',
+    borderColor: 'rgba(255,149,0,0.3)',
   },
   conflictTitle: {
-    color: '#E65100',
+    color: '#FF9500',
     fontWeight: '600',
     marginBottom: 8,
   },
@@ -1145,19 +1207,26 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   conflictBtn: {
-    backgroundColor: '#FFA726',
+    backgroundColor: 'rgba(255,149,0,0.2)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.5)'
   },
   conflictBtnText: {
     fontSize: 12,
-    color: '#fff',
+    color: '#FF9500',
     fontWeight: '600',
   },
   conflictHint: {
     fontSize: 10,
-    color: '#777',
+    color: colors.textMuted,
     fontStyle: 'italic',
+  },
+  proposalAnimContainer: {
+    borderRadius: radii.card || 16,
+    overflow: 'hidden',
+    marginBottom: 16,
   }
 });
