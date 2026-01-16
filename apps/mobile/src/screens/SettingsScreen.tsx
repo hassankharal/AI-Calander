@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'rea
 import { supabase } from '../lib/supabaseClient';
 import { useUserMemory } from '../hooks/useUserMemory';
 import { useSetup } from '../navigation/SetupContext';
+import { colors, glass, typography } from '../theme';
 
 export default function SettingsScreen() {
   const { resetMemory } = useUserMemory();
@@ -61,54 +62,59 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.obsidian,
     flexGrow: 1,
     alignItems: 'center',
     paddingTop: 60,
   },
   title: {
+    ...typography.headline,
     fontSize: 32,
     fontWeight: 'bold',
     marginBottom: 40,
-    color: '#000',
+    color: colors.textPrimary,
   },
   section: {
     width: '100%',
     marginBottom: 30,
   },
   sectionHeader: {
+    ...typography.muted,
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 12,
     marginLeft: 4,
   },
   button: {
-    backgroundColor: '#007AFF',
+    ...glass.interactive,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 12,
   },
   buttonText: {
-    color: '#fff',
+    ...typography.body,
+    color: colors.textPrimary,
     fontWeight: '600',
     fontSize: 16,
   },
   dangerButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: 'rgba(255, 59, 48, 0.15)', // transparent red
+    borderColor: colors.danger,
+    borderWidth: 1,
   },
   dangerButtonOutline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: colors.danger,
   },
   dangerText: {
-    color: '#FF3B30',
+    color: colors.danger,
   },
   version: {
     marginTop: 'auto',
-    color: '#ccc',
+    color: colors.textSecondary,
     fontSize: 12,
   },
 });

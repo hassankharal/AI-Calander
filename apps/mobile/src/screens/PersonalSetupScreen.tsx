@@ -13,6 +13,7 @@ import {
 import { useUserMemory } from '../hooks/useUserMemory';
 import { UserMemory } from '../types/userMemory';
 import { defaultUserMemory } from '../data/userMemoryStore';
+import { colors, glass, typography } from '../theme';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -293,44 +294,44 @@ export default function PersonalSetupScreen({ onExit }: { onExit: () => void }) 
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F2F2F7' },
+    container: { flex: 1, backgroundColor: colors.obsidian },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     content: { padding: 20, paddingBottom: 100 },
-    header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#333' },
-    stepTitle: { fontSize: 20, fontWeight: '600', marginBottom: 15, color: '#007AFF' },
-    label: { fontSize: 16, marginBottom: 8, color: '#444', fontWeight: '500' },
-    labelFixed: { fontSize: 14, width: 80, color: '#444', fontWeight: '600' },
-    tinyLabel: { fontSize: 12, color: '#666', marginBottom: 4 },
-    text: { fontSize: 16, color: '#333', marginBottom: 10 },
-    subtext: { fontSize: 14, color: '#666', marginBottom: 15 },
-    input: { backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', padding: 12, marginBottom: 15, fontSize: 16 },
-    inputHalf: { flex: 1, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ddd', padding: 12, fontSize: 16 },
+    header: { ...typography.headline, fontWeight: 'bold', marginBottom: 20, color: colors.textPrimary },
+    stepTitle: { ...typography.headline, fontSize: 20, fontWeight: '600', marginBottom: 15, color: colors.textPrimary },
+    label: { ...typography.body, fontSize: 16, marginBottom: 8, color: colors.textSecondary, fontWeight: '500' },
+    labelFixed: { fontSize: 14, width: 80, color: colors.textPrimary, fontWeight: '600' },
+    tinyLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 4 },
+    text: { ...typography.body, fontSize: 16, color: colors.textPrimary, marginBottom: 10 },
+    subtext: { fontSize: 14, color: colors.textSecondary, marginBottom: 15 },
+    input: { ...glass.card, color: colors.textPrimary, padding: 12, marginBottom: 15, fontSize: 16 },
+    inputHalf: { ...glass.card, flex: 1, color: colors.textPrimary, padding: 12, fontSize: 16 },
     row: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 },
     rowCentered: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
     rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 
-    card: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 15 },
+    card: { ...glass.card, padding: 15, borderRadius: 12, marginBottom: 15 },
 
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 },
-    chip: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center' },
-    chipActive: { backgroundColor: '#007AFF' },
-    chipText: { fontSize: 12, color: '#333' },
-    chipTextActive: { color: '#fff', fontWeight: 'bold' },
+    chip: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.borderGlass, alignItems: 'center', justifyContent: 'center' },
+    chipActive: { backgroundColor: colors.textPrimary }, // White active
+    chipText: { fontSize: 12, color: colors.textSecondary },
+    chipTextActive: { color: colors.obsidian, fontWeight: 'bold' },
 
-    pill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#eee' },
-    pillActive: { backgroundColor: '#007AFF' },
-    pillText: { color: '#333' },
-    pillTextActive: { color: '#fff', fontWeight: '600' },
+    pill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: colors.glass, borderWidth: 1, borderColor: colors.borderGlass },
+    pillActive: { backgroundColor: colors.textPrimary }, // White active
+    pillText: { color: colors.textSecondary },
+    pillTextActive: { color: colors.obsidian, fontWeight: '600' },
 
-    footer: { flexDirection: 'row', padding: 20, borderTopWidth: 1, borderColor: '#ddd', backgroundColor: '#fff' },
+    footer: { flexDirection: 'row', padding: 20, borderTopWidth: 1, borderColor: colors.borderGlass, backgroundColor: colors.obsidian },
     backBtn: { padding: 15 },
-    backBtnText: { color: '#007AFF', fontSize: 16 },
-    nextBtn: { backgroundColor: '#007AFF', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 8 },
-    nextBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+    backBtnText: { color: colors.textPrimary, fontSize: 16 },
+    nextBtn: { ...glass.interactive, paddingHorizontal: 30, paddingVertical: 12, borderRadius: 8 },
+    nextBtnText: { color: colors.textPrimary, fontWeight: 'bold', fontSize: 16 },
 
-    saveBtn: { backgroundColor: '#34C759', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 20 },
-    saveBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+    saveBtn: { backgroundColor: colors.moss, padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+    saveBtnText: { color: colors.obsidian, fontSize: 18, fontWeight: 'bold' },
 
     smallBtn: { alignSelf: 'flex-start', padding: 8 },
-    smallBtnText: { color: '#007AFF', fontSize: 14 }
+    smallBtnText: { color: colors.textPrimary, fontSize: 14 }
 });

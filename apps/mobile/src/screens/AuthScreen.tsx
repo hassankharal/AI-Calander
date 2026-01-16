@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabaseClient';
+import { colors, glass, typography } from '../theme';
 
 export default function AuthScreen() {
     const [email, setEmail] = useState('');
@@ -56,7 +57,7 @@ export default function AuthScreen() {
                 />
 
                 {loading ? (
-                    <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 20 }} />
+                    <ActivityIndicator size="large" color={colors.textPrimary} style={{ marginTop: 20 }} />
                 ) : (
                     <View style={styles.buttonContainer}>
                         <TouchableOpacity style={styles.button} onPress={signInWithEmail}>
@@ -77,21 +78,22 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         padding: 20,
-        backgroundColor: '#fff',
+        backgroundColor: colors.obsidian,
     },
     title: {
+        ...typography.headline,
         fontSize: 32,
         fontWeight: 'bold',
         textAlign: 'center',
         marginBottom: 40,
-        color: '#007AFF',
+        color: colors.textPrimary,
     },
     form: {
         width: '100%',
     },
     input: {
-        borderWidth: 1,
-        borderColor: '#ddd',
+        ...glass.card, // Use glass input style
+        color: colors.textPrimary,
         padding: 15,
         borderRadius: 8,
         marginBottom: 15,
@@ -102,22 +104,24 @@ const styles = StyleSheet.create({
         gap: 15,
     },
     button: {
-        backgroundColor: '#007AFF',
+        ...glass.interactive,
+        backgroundColor: colors.glass, // stronger bg for primary?
         padding: 15,
         borderRadius: 8,
         alignItems: 'center',
     },
     buttonText: {
-        color: '#fff',
+        ...typography.body,
+        color: colors.textPrimary,
         fontWeight: 'bold',
         fontSize: 16,
     },
     outlineButton: {
         backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderColor: '#007AFF',
+        borderWidth: 1,
+        borderColor: colors.borderGlass,
     },
     outlineButtonText: {
-        color: '#007AFF',
+        color: colors.textPrimary,
     },
 });
