@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useCallback } from 'react';
+﻿import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,13 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export default function CalendarScreen() {
   const { events, refresh, addEvent, updateEvent, deleteEvent } = useEvents();
   const { showToast } = useToast();
+
+  // Ref pattern to stabilize focus effect
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -47,12 +54,16 @@ export default function CalendarScreen() {
   const [startTime, setStartTime] = useState('09:00'); // HH:MM
   const [duration, setDuration] = useState('60'); // Minutes string
 
-  // Refresh events when screen focuses
+  // Refresh events when screen focuses (stable callback)
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh])
+      refreshRef.current();
+    }, [])
   );
+
+  useEffect(() => {
+    if (__DEV__) console.log("[CALENDAR] events received:", events.length);
+  }, [events.length]);
 
   // Generate the 42-day grid
   const daysGrid = useMemo(() => getMonthGrid(currentMonth), [currentMonth]);
