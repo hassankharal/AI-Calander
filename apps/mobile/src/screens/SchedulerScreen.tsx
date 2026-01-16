@@ -28,6 +28,7 @@ import {
   clearSchedulerSession
 } from '../state/schedulerSessionStore';
 import { buildEventFromIntent } from '../lib/commitIntent';
+import { classifyEnergy, getDefaultEnergyProfile, getWindowStartIso } from '../lib/energyProfile';
 
 // --- Helper Logic for Conflicts ---
 
@@ -248,7 +249,7 @@ export default function SchedulerScreen() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const processProposals = (rawProposals: any[]) => {
+  const processProposals = async (rawProposals: any[]) => {
     // Post-process proposals: set default endAt if missing
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const processedProposals: Proposal[] = rawProposals.map((p: any) => {
@@ -258,8 +259,52 @@ export default function SchedulerScreen() {
       }
       return safeP;
     });
-    setPendingProposals(processedProposals);
-    checkConflicts(processedProposals);
+
+    const auto: Proposal[] = [];
+    const manual: Proposal[] = [];
+
+    // Helper to check conflict (local version of checkConflicts logic)
+    const hasConflict = (p: Proposal) => {
+      if (p.type !== 'event' || !p.startAt || !p.endAt) return false;
+      const buffer = memory?.bufferBetweenEventsMinutes || 0;
+      const checkStart = addMinutes(p.startAt, -buffer);
+      const checkEnd = addMinutes(p.endAt, buffer);
+      return events.some(e => {
+        const eBuffer = memory?.bufferBetweenEventsMinutes || 0;
+        const eStart = addMinutes(e.startAt, -eBuffer);
+        const eEnd = addMinutes(e.endAt, eBuffer);
+        return overlaps(checkStart, checkEnd, eStart, eEnd);
+      });
+    };
+
+    processedProposals.forEach(p => {
+      // Low Risk Criteria: Task + No Anchor + <= 60m + No Conflict
+      // Note: 'anchor' property is not yet in type, assuming false if missing.
+      // Tasks usually have no duration/conflict, so strict check mainly applies if it was an event.
+      // But rule says: proposal.type === 'task'.
+      const isTask = p.type === 'task';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isAnchor = (p as any).anchor === true;
+      const duration = (p.startAt && p.endAt) ? getDurationMinutes(p.startAt, p.endAt) : 0;
+
+      if (isTask && !isAnchor && !hasConflict(p) && duration <= 60) {
+        auto.push(p);
+      } else {
+        manual.push(p);
+      }
+    });
+
+    // Commit Auto
+    for (const p of auto) {
+      await handleHoldComplete(p, true);
+    }
+
+    // Set Manual
+    if (manual.length > 0) {
+      setPendingProposals(manual);
+      checkConflicts(manual);
+      if (__DEV__) console.log("[SCHEDULER] confirmation required", manual.map(m => m.id));
+    }
   };
 
   // --- Conflict Detection (Existing Logic) ---
@@ -289,14 +334,104 @@ export default function SchedulerScreen() {
   };
 
   const getNextFreeSlot = (proposal: Proposal) => {
-    if (!proposal.startAt || !proposal.endAt) return;
-    const duration = getDurationMinutes(proposal.startAt, proposal.endAt);
-    const candidateStart = new Date(proposal.startAt);
-    const buffer = memory?.bufferBetweenEventsMinutes || 0;
+    // If we have a specific start time, preserve it (don't bias)
+    if (proposal.startAt && proposal.endAt) {
+      // Just check validity around existing proposal start? 
+      // Actually user clicked "Find Next Slot", presumably current one is blocked.
+      // So we should search *forward* from the proposal time.
+    }
+
+    // Determine bias
+    const energyType = classifyEnergy(proposal.title);
+    const profile = getDefaultEnergyProfile();
+
+    let candidateStart: Date;
+
+    // If proposal has a start time, start searching from there (user explicit intent overrides bias start, 
+    // unless they are explicitly asking for a reschedule which "Find Next Slot" implies).
+    // The requirement says: "If classifyEnergy... start searching from today at peakStart/slumpStart".
+    // "Find Next Slot" implies finding *another* slot.
+    // If the proposal ALREADY has a start time (conflict case), we usually want to search *after* that time.
+    // BUT the requirement is specific: "bias the search start". 
+    // Let's interpret "Find Next Slot" as "Auto-schedule this for me".
+
+    const now = new Date();
+
+    if (proposal.startAt) {
+      // If it already has a time, use that as base?
+      candidateStart = new Date(proposal.startAt);
+    } else {
+      // No time set (task or vague), use now or bias
+      candidateStart = new Date();
+    }
+
+    if (energyType === 'deep') {
+      const peakIso = getWindowStartIso(now, profile.peakStart);
+      const peakDate = new Date(peakIso);
+
+      // If peak start is in the past, maybe use now? Or just start search at peak (which is past) and loop forward?
+      // Loop forward handles passing time.
+      // If we want to bias for *tomorrow's* peak if today's is gone? 
+      // Simplest interpretation: Start checking at Today's Peak Start.
+      // If that is blocked or passed, the loop will find next available.
+      // However, if we start at 9am, and it's 5pm, 9am is gone.
+      // Better: Max(now, peakStart) for today?
+      // Actually, if I reset to 9am today, and it is 5pm, `candidateStart < now` check (if any) might fail?
+      // The loop is `candidateStart.setMinutes...`.
+      // Let's just set the candidateStart.
+
+      // Wait, if it's 5pm and I set candidate to 9am today, the loop will check 9am, 9:15... 
+      // If those are "free" (historical time isn't blocked by events usually unless we check `end < now`?), we might schedule in the past.
+      // We need to ensure we don't schedule in the past.
+
+      if (peakDate < now) {
+        // Peak for today passed? Try finding ANY slot, or maybe bias to tomorrow?
+        // "If 'deep', start searching from today at peakStart."
+        // Let's stick to literal instructions but add "don't schedule in past" check implicitly if loop handles it?
+        // My `getNextFreeSlot` loop doesn't check for "past" explicitly, it just checks event overlap.
+        // I should ensure candidateStart >= now.
+
+        // If strict bias requested:
+        candidateStart = peakDate;
+      } else {
+        candidateStart = peakDate;
+      }
+
+      if (__DEV__) console.log(`[ENERGY] classified "${proposal.title}" as deep`);
+      if (__DEV__) console.log(`[ENERGY] search start set to ${candidateStart.toISOString()} for peak`);
+    } else {
+      // Shallow/Slump
+      const slumpIso = getWindowStartIso(now, profile.slumpStart);
+      const slumpDate = new Date(slumpIso);
+      candidateStart = slumpDate;
+
+      if (__DEV__) console.log(`[ENERGY] classified "${proposal.title}" as shallow`);
+      if (__DEV__) console.log(`[ENERGY] search start set to ${candidateStart.toISOString()} for slump`);
+    }
+
+    // Ensure we don't start in the past if possible, or assume the user wants that? 
+    // The previous implementation was: `const candidateStart = new Date(proposal.startAt);`
+    // If I override this, I must be careful.
+
+    const duration = (proposal.startAt && proposal.endAt)
+      ? getDurationMinutes(proposal.startAt, proposal.endAt)
+      : (proposal.type === 'event' ? (memory?.defaultEventMinutes || 60) : 30); // Default duration if text doesn't specify
 
     // Look up to 7 days ahead
+    // We need to ensure we don't return a time in the past
+    // If candidateStart < now, fast forward to now?
+    if (candidateStart < new Date()) {
+      candidateStart = new Date();
+      // Round up to next 15 min
+      const rem = candidateStart.getMinutes() % 15;
+      if (rem > 0) candidateStart.setMinutes(candidateStart.getMinutes() + (15 - rem));
+      candidateStart.setSeconds(0, 0);
+    }
+
+    const buffer = memory?.bufferBetweenEventsMinutes || 0;
+
     for (let i = 0; i < 96 * 7; i++) { // 15 min chunks
-      candidateStart.setMinutes(candidateStart.getMinutes() + 15);
+      // Check if current candidate is valid
       const startIso = candidateStart.toISOString();
       const endIso = addMinutes(startIso, duration);
       const checkStart = addMinutes(startIso, -buffer);
@@ -316,6 +451,9 @@ export default function SchedulerScreen() {
         Alert.alert("Slot Found", `Moved to ${candidateStart.toLocaleString()}`);
         return;
       }
+
+      // Advance
+      candidateStart.setMinutes(candidateStart.getMinutes() + 15);
     }
     Alert.alert("No Slot Found", "Could not find a free slot in the next 7 days.");
   };
@@ -341,7 +479,7 @@ export default function SchedulerScreen() {
 
 
 
-  const handleHoldComplete = async (proposal: Proposal) => {
+  const handleHoldComplete = async (proposal: Proposal, silent = false) => {
     try {
       console.log("Starting commit for proposal:", proposal);
 
@@ -359,6 +497,7 @@ export default function SchedulerScreen() {
         });
         setLastAction({ type: 'task', id: newId });
         console.log("Task committed:", newId);
+        if (__DEV__) console.log("[SCHEDULER] auto-committed proposal", newId);
       } else {
         // Event
         if (!payload.startAt || !payload.endAt) {
@@ -385,14 +524,21 @@ export default function SchedulerScreen() {
       Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       setTimeout(() => hideUndo(), 5000);
 
-      const confirmText = proposal.type === 'task'
-        ? `Added task "${payload.title}".`
-        : `Scheduled "${payload.title}" for ${new Date(payload.startAt!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+      let confirmText = "";
+      if (silent) {
+        confirmText = proposal.type === 'task'
+          ? `Task "${payload.title}" added to your list.`
+          : `Scheduled "${payload.title}".`;
+      } else {
+        confirmText = proposal.type === 'task'
+          ? `Added task "${payload.title}".`
+          : `Scheduled "${payload.title}" for ${new Date(payload.startAt!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+      }
 
       setMessages(prev => [...prev, {
         id: createId(),
         role: 'assistant',
-        text: `${confirmText} Anything else?`,
+        text: silent ? confirmText : `${confirmText} Anything else?`,
         createdAt: new Date().toISOString()
       }]);
 
