@@ -8,7 +8,8 @@ import { Event } from '../types/event';
 import {
   colors,
   typography,
-  glass
+  glass,
+  motion
 } from '../theme';
 import { GhostEvent } from '../types/ghost';
 
@@ -128,7 +129,7 @@ export default function HomeScreen() {
     calibrationOpacity.setValue(0);
     Animated.timing(calibrationOpacity, {
       toValue: 1,
-      duration: 300,
+      duration: motion.slow.duration,
       useNativeDriver: true,
     }).start();
   }, [dailyCalibration, calibrationOpacity]);
@@ -178,7 +179,11 @@ export default function HomeScreen() {
     // Stop after 9 seconds (settling duration)
     const timer = setTimeout(() => {
       loop.stop();
-      Animated.timing(opacityAnim, { toValue: 1, duration: 1000, useNativeDriver: true }).start(() => {
+      Animated.spring(opacityAnim, {
+        toValue: 1,
+        ...motion.spring,
+        useNativeDriver: true
+      }).start(() => {
         setIsSettled(true);
         if (__DEV__) console.log("[HOME] schedule settled");
       });
@@ -209,7 +214,7 @@ export default function HomeScreen() {
         </Animated.View>
 
         {/* Next Event Section */}
-        <View style={[styles.section, styles.highlightSection]}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitleWhite}>Next Event</Text>
           {nextEvent ? (
             <View style={styles.nextEventContent}>
@@ -260,7 +265,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Tasks (Next 7 Days)</Text>
-            <View style={[styles.badge, { backgroundColor: '#FF9500' }]}>
+            <View style={styles.badge}>
               <Text style={styles.badgeText}>{next7DaysMetric}</Text>
             </View>
           </View>
@@ -309,10 +314,7 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
   },
-  highlightSection: {
-    ...glass.card,
-    borderColor: colors.cyan, // Subtle accent for "Next Event" if desired, or keep generic
-  },
+  // highlightSection removed - using standard section style only for consistency
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -321,7 +323,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.muted,
-    fontSize: 14,
     color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -373,7 +374,7 @@ const styles = StyleSheet.create({
   snippetLocation: {
     ...typography.muted,
     fontSize: 12,
-    color: colors.cyan,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   nextEventContent: {
