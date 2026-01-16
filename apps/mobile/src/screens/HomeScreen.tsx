@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Platform, Animated } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
@@ -74,9 +74,6 @@ export default function HomeScreen() {
     };
   }, [events]);
 
-  // Force re-calc at least once per day
-  const todayKey = new Date().toDateString();
-
   const dailyCalibration = useMemo(() => {
     const now = new Date();
 
@@ -101,7 +98,7 @@ export default function HomeScreen() {
     }
 
     return "Balanced day. Maintain momentum.";
-  }, [events, todayKey]);
+  }, [events]);
 
   useEffect(() => {
     if (__DEV__) console.log("[HOME] daily calibration:", dailyCalibration);
@@ -129,7 +126,8 @@ export default function HomeScreen() {
 
   // --- Settling Animation ---
   const [isSettled, setIsSettled] = React.useState(false);
-  const opacityAnim = React.useRef(new Animated.Value(0.95)).current;
+  // Use state to hold the Animated.Value to avoid "ref.current during render" checks
+  const [opacityAnim] = React.useState(() => new Animated.Value(0.95));
 
   useEffect(() => {
     // Pulse animation: 0.95 -> 1.0 -> 0.95
