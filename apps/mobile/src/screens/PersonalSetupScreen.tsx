@@ -95,14 +95,17 @@ export default function PersonalSetupScreen({ onExit }: { onExit: () => void }) 
             <TextInput
                 style={styles.input}
                 placeholder="Name (Optional)"
+                placeholderTextColor={colors.textSecondary}
                 value={form.preferredName || ''}
                 onChangeText={t => setForm({ ...form, preferredName: t })}
+                keyboardAppearance="dark"
             />
             <Text style={styles.label}>Timezone</Text>
             <TextInput
                 style={styles.input}
                 value={form.timezone}
                 onChangeText={t => setForm({ ...form, timezone: t })}
+                keyboardAppearance="dark"
             />
         </View>
     );
@@ -129,7 +132,9 @@ export default function PersonalSetupScreen({ onExit }: { onExit: () => void }) 
             <TextInput
                 style={styles.input}
                 keyboardType="numeric"
+                keyboardAppearance="dark"
                 placeholder="8"
+                placeholderTextColor={colors.textSecondary}
                 value={form.idealSleepHours?.toString() || ''}
                 onChangeText={t => setForm({ ...form, idealSleepHours: parseInt(t) || 8 })}
             />
@@ -163,6 +168,7 @@ export default function PersonalSetupScreen({ onExit }: { onExit: () => void }) 
                                 <TextInput
                                     style={styles.input}
                                     value={b.start}
+                                    keyboardAppearance="dark"
                                     onChangeText={t => updateBlockTime(gIdx, bIdx, 'start', t)}
                                 />
                             </View>
@@ -172,6 +178,7 @@ export default function PersonalSetupScreen({ onExit }: { onExit: () => void }) 
                                 <TextInput
                                     style={styles.input}
                                     value={b.end}
+                                    keyboardAppearance="dark"
                                     onChangeText={t => updateBlockTime(gIdx, bIdx, 'end', t)}
                                 />
                             </View>

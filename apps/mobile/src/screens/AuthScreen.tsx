@@ -42,18 +42,22 @@ export default function AuthScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Email"
+                    placeholderTextColor={colors.textSecondary}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    keyboardAppearance="dark"
                 />
                 <TextInput
                     style={styles.input}
                     placeholder="Password"
+                    placeholderTextColor={colors.textSecondary}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
                     autoCapitalize="none"
+                    keyboardAppearance="dark"
                 />
 
                 {loading ? (
