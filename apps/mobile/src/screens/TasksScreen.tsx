@@ -242,9 +242,11 @@ export default function TasksScreen() {
     }
   };
 
-  const handleComplete = async (id: string) => {
-    await completeTask(id);
-    showToast("Task completed");
+  const handleComplete = async (task: Task) => {
+    // If it's already completed (completedAt is set), we are marking incomplete
+    const isCompleting = !task.completed;
+    await completeTask(task.id);
+    showToast(isCompleting ? "Completed ✅" : "Marked incomplete");
   };
 
   // --- Renderers ---
@@ -254,7 +256,7 @@ export default function TasksScreen() {
       {/* Complete Action */}
       <TouchableOpacity
         style={styles.checkboxContainer}
-        onPress={() => item.completed ? completeTask(item.id) : handleComplete(item.id)}
+        onPress={() => handleComplete(item)}
       >
         <Ionicons
           name={item.completed ? "checkmark-circle" : "ellipse-outline"}
