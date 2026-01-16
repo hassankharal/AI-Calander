@@ -878,11 +878,15 @@ export default function SchedulerScreen() {
                 editable={!loading}
               />
               <TouchableOpacity
-                onPress={handleSend}
                 style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
+                onPress={handleSend}
                 disabled={!inputText.trim() || loading}
               >
-                <Ionicons name="arrow-up" size={20} color="#fff" />
+                {loading ? (
+                  <Ionicons name="hourglass-outline" size={20} color={colors.cyan} />
+                ) : (
+                  <Ionicons name="arrow-up" size={20} color={colors.textPrimary} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1086,8 +1090,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
     borderWidth: 1,
     borderColor: colors.glassBorder,
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    borderRadius: 24, // Pill
+    paddingHorizontal: 20,
     paddingVertical: 10,
     fontSize: 16,
     color: colors.text,
@@ -1095,10 +1099,12 @@ const styles = StyleSheet.create({
     maxHeight: 100,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.cyan,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -284,13 +284,13 @@ export default function CalendarScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
-          <Ionicons name="chevron-back" size={24} color="#007AFF" />
+          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.monthTitle}>
           {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
         </Text>
         <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
-          <Ionicons name="chevron-forward" size={24} color="#007AFF" />
+          <Ionicons name="chevron-forward" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -298,7 +298,7 @@ export default function CalendarScreen() {
             <Text style={styles.todayBtnText}>Today</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={openCreateModal} style={styles.addEventBtn}>
-            <Ionicons name="add" size={24} color="#fff" />
+            <Ionicons name="add" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -430,14 +430,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14, // Taller header
     marginTop: 10,
     marginHorizontal: 16,
     backgroundColor: colors.glass,
     borderWidth: 1,
     borderColor: colors.borderGlass,
-    borderBottomColor: colors.borderGlass
+    borderRadius: 24, // Pill shape
   },
   monthTitle: { fontSize: 18, fontWeight: 'bold', color: colors.textPrimary },
   navBtn: { padding: 8 },
@@ -447,12 +447,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
     borderWidth: 1,
     borderColor: colors.borderGlass,
-    borderRadius: 12,
+    borderRadius: 16, // Smoother
     marginRight: 8
   },
   todayBtnText: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
   addEventBtn: {
-    backgroundColor: colors.cyan,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -482,17 +484,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCell: { backgroundColor: colors.cyan, borderRadius: 20 },
+  selectedCell: { backgroundColor: colors.glass, borderRadius: 20, borderWidth: 1, borderColor: colors.borderGlass },
   otherMonthCell: { opacity: 0.3 },
 
   cellText: { fontSize: 16, color: colors.textPrimary },
-  selectedText: { color: '#000', fontWeight: 'bold' }, // Black text on cyan
+  selectedText: { color: colors.textPrimary, fontWeight: 'bold' },
   otherMonthText: { color: colors.textSecondary },
-  todayText: { color: colors.cyan, fontWeight: 'bold' },
+  todayText: { color: colors.textPrimary, fontWeight: '900', textDecorationLine: 'underline' }, // Distinct but neutral
 
   dot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
-  dotNormal: { backgroundColor: colors.cyan },
-  dotSelected: { backgroundColor: '#000' }, // visible on cyan
+  dotNormal: { backgroundColor: colors.textSecondary },
+  dotSelected: { backgroundColor: colors.textPrimary },
 
   agendaHeader: {
     backgroundColor: 'transparent',
@@ -515,7 +517,7 @@ const styles = StyleSheet.create({
   },
   agendaTimeBox: { width: 80 },
   // agendaTime handled by themeStyles
-  agendaContent: { flex: 1, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.cyan },
+  agendaContent: { flex: 1, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.borderGlass },
   // agendaTitle, agendaLocation handled by themeStyles
 
   emptyContainer: { padding: 40, alignItems: 'center' },
@@ -534,7 +536,7 @@ const styles = StyleSheet.create({
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: colors.textPrimary },
-  saveBtnText: { color: colors.cyan, fontSize: 18, fontWeight: 'bold' },
+  saveBtnText: { color: colors.textPrimary, fontSize: 18, fontWeight: 'bold' },
 
   titleInput: {
     fontSize: 24,

@@ -272,7 +272,7 @@ export default function TasksScreen() {
         <Ionicons
           name={item.completed ? "checkmark-circle" : "ellipse-outline"}
           size={24}
-          color={item.completed ? "#34C759" : "#ccc"}
+          color={item.completed ? colors.moss : colors.textSecondary}
         />
       </TouchableOpacity>
 
@@ -296,7 +296,7 @@ export default function TasksScreen() {
           style={styles.scheduleButton}
           onPress={() => openScheduleModal(item)}
         >
-          <Ionicons name="calendar-outline" size={18} color="#007AFF" />
+          <Ionicons name="calendar-outline" size={18} color={colors.textPrimary} />
         </TouchableOpacity>
       )}
 
@@ -312,7 +312,7 @@ export default function TasksScreen() {
         ])}
         style={styles.deleteButton}
       >
-        <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+        <Ionicons name="trash-outline" size={18} color={colors.danger} />
       </TouchableOpacity>
     </View>
   );
@@ -322,12 +322,12 @@ export default function TasksScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Tasks</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setCreateModalVisible(true)}>
-          <Ionicons name="add" size={24} color="#fff" />
+          <Ionicons name="add" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
 
       {isLoading ? (
-        <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 20 }} />
+        <ActivityIndicator size="large" color={colors.cyan} style={{ marginTop: 20 }} />
       ) : (
         <ScrollView style={styles.scroll}>
           {/* Pending Tasks */}
@@ -409,7 +409,7 @@ export default function TasksScreen() {
                   <Text style={styles.buttonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.saveButton} onPress={handleAddTask}>
-                  <Text style={[styles.buttonText, { color: '#fff' }]}>Save</Text>
+                  <Text style={[styles.buttonText, { color: colors.obsidian }]}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -461,7 +461,7 @@ export default function TasksScreen() {
                           </Text>
                           {p.notes && <Text style={{ fontSize: 10, color: '#888' }}>{p.notes}</Text>}
                         </View>
-                        <Ionicons name="chevron-forward" size={16} color="#007AFF" style={{ marginLeft: 'auto' }} />
+                        <Ionicons name="chevron-forward" size={16} color={colors.textPrimary} style={{ marginLeft: 'auto' }} />
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -469,7 +469,7 @@ export default function TasksScreen() {
 
                 {proposals.length === 0 && !customMode && (
                   <View style={styles.errorBox}>
-                    <Text style={{ color: '#666', marginBottom: 10 }}>No free slots found.</Text>
+                    <Text style={{ color: colors.textSecondary, marginBottom: 10 }}>No free slots found.</Text>
                     <TouchableOpacity onPress={() => setCustomMode(true)} style={styles.actionBtnOutline}>
                       <Text>Pick Manually</Text>
                     </TouchableOpacity>
@@ -481,7 +481,7 @@ export default function TasksScreen() {
                   <View style={styles.actionGrid}>
                     <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => finalizeSchedule(proposals[0])}>
                       <Text style={styles.actionBtnTitle}>Quick Schedule</Text>
-                      <Text style={[styles.actionBtnSub, { color: '#fff' }]}>Take the first slot</Text>
+                      <Text style={[styles.actionBtnSub, { color: 'rgba(0,0,0,0.6)' }]}>Take the first slot</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionBtnOutline} onPress={() => setCustomMode(true)}>
                       <Text style={styles.actionBtnTitle}>Custom</Text>
@@ -726,13 +726,13 @@ const styles = StyleSheet.create({
   },
   pillActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
   pillText: { fontSize: 14, color: colors.textSecondary },
-  pillTextActive: { color: '#000' },
+  pillTextActive: { color: colors.obsidian, fontWeight: 'bold' },
 
   actionGrid: { gap: 10, marginTop: 10 },
   actionBtnPrimary: { backgroundColor: colors.moss, padding: 16, borderRadius: 12, alignItems: 'center' }, // Moss for primary
   actionBtnOutline: { borderWidth: 1, borderColor: colors.borderGlass, padding: 16, borderRadius: 12, alignItems: 'center' },
-  actionBtnTitle: { fontSize: 16, fontWeight: 'bold', color: '#000' }, // Moss/Outline text
-  actionBtnSub: { fontSize: 12, color: '#333' },
+  actionBtnTitle: { fontSize: 16, fontWeight: 'bold', color: colors.obsidian }, // Moss/Outline text
+  actionBtnSub: { fontSize: 12, color: colors.textSecondary },
 
   proposalList: { gap: 8, marginBottom: 10 },
   proposalBtn: {
@@ -755,9 +755,9 @@ const styles = StyleSheet.create({
   dayChip: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.glass, alignItems: 'center', justifyContent: 'center', marginRight: 6, borderWidth: 1, borderColor: colors.borderGlass },
   dayChipActive: { backgroundColor: colors.cyan },
   dayChipText: { fontSize: 10, color: colors.textSecondary },
-  dayChipTextActive: { color: '#000', fontWeight: 'bold' },
+  dayChipTextActive: { color: colors.obsidian, fontWeight: 'bold' },
   timeInput: { borderWidth: 1, borderColor: colors.borderGlass, borderRadius: 8, padding: 12, fontSize: 18, textAlign: 'center', marginBottom: 12, color: colors.textPrimary, backgroundColor: colors.glass },
-  saveBtnText: { color: '#000', fontWeight: 'bold' },
+  saveBtnText: { color: colors.obsidian, fontWeight: 'bold' },
   cancelLink: { alignItems: 'center', padding: 10 },
   cancelLinkText: { color: colors.textSecondary },
 
@@ -768,9 +768,9 @@ const styles = StyleSheet.create({
   anchorLabel: { fontSize: 16, color: colors.textPrimary },
   anchorToggle: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.glass, justifyContent: 'center', padding: 2, borderWidth: 1, borderColor: colors.borderGlass },
   anchorToggleActive: { backgroundColor: colors.moss },
-  anchorKnob: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff' },
-  anchorKnobActive: { alignSelf: 'flex-end' },
+  anchorKnob: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.textPrimary },
+  anchorKnobActive: { alignSelf: 'flex-end', backgroundColor: colors.obsidian },
 
   anchorTag: { backgroundColor: '#FFD60A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 },
-  anchorTagText: { fontSize: 10, fontWeight: 'bold', color: '#000' }
+  anchorTagText: { fontSize: 10, fontWeight: 'bold', color: colors.obsidian }
 });

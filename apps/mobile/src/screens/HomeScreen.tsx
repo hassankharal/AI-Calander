@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Platform, Animated } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, SafeAreaView, Platform, Animated, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation, NavigationProp } from '@react-navigation/native';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
 import { Task } from '../types/task';
@@ -9,11 +10,15 @@ import {
   colors,
   typography,
   glass,
-  motion
+  motion,
+  spacing,
+  radii
 } from '../theme';
-import { GhostEvent } from '../types/ghost';
+import { RootTabParamList } from '../navigation/RootTabs';
+
 
 export default function HomeScreen() {
+  const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { tasks, refresh: refreshTasks } = useTasks();
   const { events, refresh: refreshEvents } = useEvents();
 
@@ -27,8 +32,6 @@ export default function HomeScreen() {
   useEffect(() => {
     // Log cleanup
   }, [events.length, tasks.length]);
-
-  const [ghostEvents] = React.useState<GhostEvent[]>([]);
 
   // Calibration Fade Logic moved down
 
@@ -154,13 +157,6 @@ export default function HomeScreen() {
     );
   };
 
-  const renderGhostSnippet = (ghost: GhostEvent) => (
-    <View key={ghost.id} style={[styles.snippet, { opacity: 0.5, borderLeftWidth: 2, borderLeftColor: colors.textSecondary }]}>
-      <Text style={[styles.snippetTitle, { fontStyle: 'italic' }]}>👻 {ghost.title}</Text>
-      <Text style={styles.snippetDate}>Suggested</Text>
-    </View>
-  );
-
   // --- Settling Animation ---
   const [isSettled, setIsSettled] = React.useState(false);
   // Use state to hold the Animated.Value to avoid "ref.current during render" checks
@@ -201,7 +197,34 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         style={!isSettled ? { opacity: opacityAnim } : undefined}
       >
-        <Text style={[styles.headerTitle]}>Dashboard</Text>
+        {/* Premium Header */}
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerDate}>
+              {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
+            </Text>
+            <Text style={styles.headerTitle}>Dashboard</Text>
+          </View>
+          <TouchableOpacity style={styles.headerActionBtn} onPress={() => { /* TODO: Quick Add */ }}>
+            <Ionicons name="add" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Controls */}
+        <View style={styles.quickControlsRow}>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => navigation.navigate('Tasks')}>
+            <Ionicons name="checkbox-outline" size={18} color={colors.textPrimary} />
+            <Text style={styles.quickBtnText}>Add Task</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => navigation.navigate('Calendar')}>
+            <Ionicons name="calendar-outline" size={18} color={colors.textPrimary} />
+            <Text style={styles.quickBtnText}>Add Event</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => navigation.navigate('Scheduler')}>
+            <Ionicons name="flash-outline" size={18} color={colors.textPrimary} />
+            <Text style={styles.quickBtnText}>Schedule</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Morning Calibration */}
         <Animated.View style={[
@@ -254,11 +277,6 @@ export default function HomeScreen() {
           ) : (
             upcomingEvents.map(renderEventSnippet)
           )}
-          {ghostEvents.length > 0 && (
-            <View style={{ marginTop: 8 }}>
-              {ghostEvents.map(renderGhostSnippet)}
-            </View>
-          )}
         </View>
 
         {/* Tasks Next 7 Days */}
@@ -290,11 +308,58 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  headerDate: {
+    ...typography.muted,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    letterSpacing: 1,
+    fontWeight: '600'
+  },
   headerTitle: {
     ...typography.headline,
-    fontSize: 28,
+    fontSize: 32,
     color: colors.textPrimary,
+    fontWeight: 'bold',
+  },
+  headerActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickControlsRow: {
+    flexDirection: 'row',
+    gap: 12,
     marginBottom: 20,
+  },
+  quickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 24, // Pill shape
+    paddingVertical: 12,
+    gap: 8,
+  },
+  quickBtnText: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontWeight: '600',
   },
   calibrationCard: {
     ...glass.card,
@@ -310,9 +375,9 @@ const styles = StyleSheet.create({
   },
   section: {
     ...glass.card,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: radii.card,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
   },
   // highlightSection removed - using standard section style only for consistency
   sectionHeader: {
@@ -325,13 +390,17 @@ const styles = StyleSheet.create({
     ...typography.muted,
     color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 2,
+    fontSize: 12,
+    fontWeight: '700',
   },
   sectionTitleWhite: {
     ...typography.headline,
-    fontSize: 18,
+    fontSize: 20,
     color: colors.textPrimary,
-    marginBottom: 10,
+    marginBottom: spacing.sm,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   badge: {
     backgroundColor: colors.borderGlass,
@@ -355,7 +424,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   snippet: {
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderGlass,
   },
@@ -364,18 +433,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textPrimary,
     fontWeight: '500',
+    marginBottom: 2
   },
   snippetDate: {
     ...typography.muted,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 2,
   },
   snippetLocation: {
     ...typography.muted,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 2,
   },
   nextEventContent: {
     marginTop: 5,
@@ -389,7 +457,7 @@ const styles = StyleSheet.create({
   nextEventTime: {
     ...typography.body,
     fontSize: 16,
-    color: colors.cyan,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   nextEventLoc: {
