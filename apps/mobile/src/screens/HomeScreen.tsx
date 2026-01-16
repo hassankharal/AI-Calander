@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, Platform, Animated } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
@@ -127,9 +127,41 @@ export default function HomeScreen() {
     );
   };
 
+  // --- Settling Animation ---
+  const [isSettled, setIsSettled] = React.useState(false);
+  const opacityAnim = React.useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    // Pulse animation: 0.95 -> 1.0 -> 0.95
+    const pulse = Animated.sequence([
+      Animated.timing(opacityAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      Animated.timing(opacityAnim, { toValue: 0.95, duration: 2000, useNativeDriver: true })
+    ]);
+
+    const loop = Animated.loop(pulse);
+    loop.start();
+
+    // Stop after 9 seconds (settling duration)
+    const timer = setTimeout(() => {
+      loop.stop();
+      Animated.timing(opacityAnim, { toValue: 1, duration: 1000, useNativeDriver: true }).start(() => {
+        setIsSettled(true);
+        if (__DEV__) console.log("[HOME] schedule settled");
+      });
+    }, 9000);
+
+    return () => {
+      clearTimeout(timer);
+      loop.stop();
+    };
+  }, [opacityAnim]);
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scrollContent}
+        style={!isSettled ? { opacity: opacityAnim } : undefined}
+      >
         <Text style={styles.headerTitle}>Dashboard</Text>
 
         {/* Morning Calibration */}
@@ -195,7 +227,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
