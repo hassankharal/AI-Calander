@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo } from 'react';
+﻿import React, { useCallback, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTasks } from '../hooks/useTasks';
@@ -16,6 +16,13 @@ export default function HomeScreen() {
       refreshEvents();
     }, [refreshTasks, refreshEvents])
   );
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log("[HOME] events received:", events.length);
+      console.log("[HOME] tasks received:", tasks.length);
+    }
+  }, [events.length, tasks.length]);
 
   const { todayMetric, next7DaysMetric, todayTasks, next7DaysTasks } = useMemo(() => {
     const today = new Date();
