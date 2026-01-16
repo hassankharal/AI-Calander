@@ -74,6 +74,40 @@ export default function HomeScreen() {
     };
   }, [events]);
 
+  const dailyCalibration = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+    const noon = new Date(now);
+    noon.setHours(12, 0, 0, 0);
+
+    const todayEvents = events.filter(e => {
+      const start = new Date(e.startAt);
+      return start >= startOfDay && start <= endOfDay;
+    });
+
+    if (todayEvents.length === 0) {
+      return "Open runway this morning. Prioritize one meaningful output.";
+    }
+
+    const morningEvents = todayEvents.filter(e => new Date(e.startAt) < noon);
+    if (morningEvents.length >= 2) {
+      return "Execution day. Deep work protected until noon.";
+    }
+
+    if (todayEvents.length >= 4) {
+      return "High context switching. Recovery buffers recommended.";
+    }
+
+    return "Balanced day. Maintain momentum.";
+  }, [events]);
+
+  useEffect(() => {
+    if (__DEV__) console.log("[HOME] daily calibration:", dailyCalibration);
+  }, [dailyCalibration]);
+
   const renderTaskSnippet = (task: Task) => (
     <View key={task.id} style={styles.snippet}>
       <Text style={styles.snippetTitle}>{task.title}</Text>
@@ -98,6 +132,11 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.headerTitle}>Dashboard</Text>
+
+        {/* Morning Calibration */}
+        <View style={styles.calibrationSection}>
+          <Text style={styles.calibrationText}>{dailyCalibration}</Text>
+        </View>
 
         {/* Next Event Section */}
         <View style={[styles.section, styles.highlightSection]}>
@@ -265,4 +304,15 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     marginTop: 5,
   },
+  calibrationSection: {
+    marginBottom: 20,
+    marginTop: -5,
+  },
+  calibrationText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+    fontStyle: 'italic',
+    letterSpacing: 0.5,
+  }
 });
