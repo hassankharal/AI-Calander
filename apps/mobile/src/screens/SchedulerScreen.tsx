@@ -11,7 +11,6 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TouchableWithoutFeedback,
-  Keyboard,
   Animated,
   Alert
 } from 'react-native';
@@ -21,8 +20,14 @@ import { useEvents } from '../hooks/useEvents';
 import { useUserMemory } from '../hooks/useUserMemory';
 import { callAiScheduler } from '../lib/aiClient';
 import { createId } from '../lib/id';
-import { ChatMessage, Proposal } from '../types/scheduler';
+import { ChatMessage, Proposal, SchedulerSessionState } from '../types/scheduler';
 import { Event } from '../types/event';
+import {
+  loadSchedulerSession,
+  saveSchedulerSession,
+  clearSchedulerSession
+} from '../state/schedulerSessionStore';
+import { buildEventFromIntent } from '../lib/commitIntent';
 
 // --- Helper Logic for Conflicts ---
 
@@ -43,8 +48,29 @@ function overlaps(startA: string, endA: string, startB: string, endB: string): b
   return startA < endB && endA > startB;
 }
 
+function stripGreetingAndEmojiStyle(text: string): string {
+  let clean = text.trim();
+  // Remove leading emojis (simple range for common ones) and space
+  clean = clean.replace(/^[\u{1F300}-\u{1FAD6}]\s*/u, '');
+  // Remove greetings
+  clean = clean.replace(/^(Hey|Hi|Hello|Greetings)\s*,?\s*/i, '');
+  // Ensure capital start
+  if (clean.length > 0) {
+    clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+  return clean;
+}
+
+const INITIAL_SESSION_STATE: SchedulerSessionState = {
+  pendingIntent: null,
+  awaitingFields: [],
+  lastQuestion: null,
+  lastProposals: null,
+  lastUserMessageId: null,
+};
+
 export default function SchedulerScreen() {
-  const { addTask, tasks } = useTasks();
+  const { addTask, deleteTask } = useTasks();
   const { events, addEvent, deleteEvent } = useEvents();
   const { memory } = useUserMemory();
 
@@ -52,6 +78,10 @@ export default function SchedulerScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Session State
+  const [sessionState, setSessionState] = useState<SchedulerSessionState>(INITIAL_SESSION_STATE);
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
 
   // Undo State
   const [showUndo, setShowUndo] = useState(false);
@@ -62,6 +92,45 @@ export default function SchedulerScreen() {
   const [conflicts, setConflicts] = useState<{ proposalId: string, event: Event }[]>([]);
 
   const flatListRef = useRef<FlatList>(null);
+
+  // --- Persistence ---
+
+  // Load on mount
+  useEffect(() => {
+    const initSession = async () => {
+      const data = await loadSchedulerSession();
+      if (data) {
+        setMessages(data.messages);
+        setSessionState(data.state);
+        if (data.state.lastProposals) {
+          setPendingProposals(data.state.lastProposals);
+        }
+      } else {
+        // Seed initial greeting
+        setMessages([{
+          id: createId(),
+          role: 'assistant',
+          text: "What would you like to schedule?",
+          createdAt: new Date().toISOString(),
+        }]);
+      }
+      setIsSessionLoaded(true);
+    };
+    initSession();
+  }, []);
+
+  // Save on change
+  useEffect(() => {
+    if (!isSessionLoaded) return;
+    const timeout = setTimeout(() => {
+      saveSchedulerSession(messages, {
+        ...sessionState,
+        lastProposals: pendingProposals.length > 0 ? pendingProposals : null
+      });
+    }, 500); // Debounce
+    return () => clearTimeout(timeout);
+  }, [messages, sessionState, isSessionLoaded, pendingProposals]);
+
 
   // --- AI Interaction ---
 
@@ -78,76 +147,133 @@ export default function SchedulerScreen() {
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setLoading(true);
-    setPendingProposals([]);
-    setConflicts([]);
 
-    // Construct Context
+    // Optimistic update
+    setSessionState(prev => ({
+      ...prev,
+      lastUserMessageId: userMsg.id
+    }));
+
+    // Prepare Thread (last 10 messages)
+    const thread = [...messages, userMsg].slice(-10).map(m => ({
+      role: m.role,
+      text: m.text
+    }));
+
+    // Events Window (next 7 days, minimal fields)
+    const now = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(now.getDate() + 7);
+    const minimalEvents = events
+      .filter(e => e.startAt >= now.toISOString() && e.startAt <= nextWeek.toISOString())
+      .map(e => ({
+        id: e.id,
+        title: e.title,
+        startAt: e.startAt,
+        endAt: e.endAt
+      }));
+
     const payload = {
       message: userMsg.text,
       nowIso: new Date().toISOString(),
       timezone: memory?.timezone || "America/Winnipeg",
-      context: {
-        tasks: tasks.filter(t => !t.completed),
-        events: events,
-        prefs: memory || null
-      }
+      prefs: memory || {},
+      thread,
+      sessionState,
+      eventsWindow: minimalEvents
     };
 
-    const response = await callAiScheduler(payload);
-    setLoading(false);
+    try {
+      const response = await callAiScheduler(payload);
 
-    if (response.ok) {
-      const data = response.data;
-      const aiMsg: ChatMessage = {
-        id: createId(),
-        role: 'assistant',
-        text: data.assistantText + (data.followUpQuestion ? `\n\n${data.followUpQuestion}` : ''),
-        createdAt: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
+      if (response.ok) {
+        const data = response.data;
 
-      if (data.mode === 'proposal' && data.proposals) {
-        // Post-process proposals: set default endAt if missing
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const processedProposals: Proposal[] = data.proposals.map((p: any) => {
-          const safeP = { ...p, id: p.id || createId() };
-          if (safeP.type === 'event' && safeP.startAt && !safeP.endAt) {
-            safeP.endAt = addMinutes(safeP.startAt, memory?.defaultEventMinutes || DEFAULT_EVENT_MINUTES);
+        // Assistant Message
+        let cleanAiText = stripGreetingAndEmojiStyle(data.assistantText);
+        if (data.followUpQuestion) {
+          const cleanFollowUp = stripGreetingAndEmojiStyle(data.followUpQuestion);
+          cleanAiText = `${cleanAiText}\n${cleanFollowUp}`;
+        }
+
+        const aiMsg: ChatMessage = {
+          id: createId(),
+          role: 'assistant',
+          text: cleanAiText,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, aiMsg]);
+
+        // Handle Mode
+        if (data.mode === 'followup') {
+          setSessionState(prev => ({
+            ...prev,
+            pendingIntent: data.updatedIntent || prev.pendingIntent,
+            awaitingFields: data.missingFields || [],
+            lastQuestion: data.followUpQuestion,
+            lastProposals: null
+          }));
+        } else if (data.mode === 'intent' || data.mode === 'proposal') {
+          // Clear pending state as we are presenting a proposal
+          setSessionState({
+            ...INITIAL_SESSION_STATE,
+            lastUserMessageId: userMsg.id
+          });
+
+          if (data.proposals) {
+            processProposals(data.proposals);
           }
-          return safeP;
-        });
-        setPendingProposals(processedProposals);
-
-        // Check initial conflicts
-        checkConflicts(processedProposals);
+        }
+      } else {
+        // Error handling
+        const errorMsg: ChatMessage = {
+          id: createId(),
+          role: 'assistant',
+          text: response.bodyText || "Sorry, I had trouble connecting.",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, errorMsg]);
       }
-    } else {
-      const errorMsg: ChatMessage = {
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => [...prev, {
         id: createId(),
         role: 'assistant',
-        text: response.bodyText || "Sorry, I had trouble connecting.",
-        createdAt: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
+        text: "Network error. Please try again.",
+        createdAt: new Date().toISOString()
+      }]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // --- Conflict Detection ---
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const processProposals = (rawProposals: any[]) => {
+    // Post-process proposals: set default endAt if missing
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processedProposals: Proposal[] = rawProposals.map((p: any) => {
+      const safeP = { ...p, id: p.id || createId() };
+      if (safeP.type === 'event' && safeP.startAt && !safeP.endAt) {
+        safeP.endAt = addMinutes(safeP.startAt, memory?.defaultEventMinutes || DEFAULT_EVENT_MINUTES);
+      }
+      return safeP;
+    });
+    setPendingProposals(processedProposals);
+    checkConflicts(processedProposals);
+  };
+
+  // --- Conflict Detection (Existing Logic) ---
 
   const checkConflicts = (proposals: Proposal[]) => {
     const newConflicts: { proposalId: string, event: Event }[] = [];
 
     proposals.forEach(p => {
       if (p.type === 'event' && p.startAt && p.endAt) {
-        // No travel buffer logic for now as requested
         const buffer = memory?.bufferBetweenEventsMinutes || 0;
-
-        // Effective range with buffer
         const checkStart = addMinutes(p.startAt, -buffer);
         const checkEnd = addMinutes(p.endAt, buffer);
 
         const conflict = events.find(e => {
-          // We apply buffer to existing events too to ensure gap
           const eBuffer = memory?.bufferBetweenEventsMinutes || 0;
           const eStart = addMinutes(e.startAt, -eBuffer);
           const eEnd = addMinutes(e.endAt, eBuffer);
@@ -166,16 +292,13 @@ export default function SchedulerScreen() {
     if (!proposal.startAt || !proposal.endAt) return;
     const duration = getDurationMinutes(proposal.startAt, proposal.endAt);
     const candidateStart = new Date(proposal.startAt);
-
     const buffer = memory?.bufferBetweenEventsMinutes || 0;
 
     // Look up to 7 days ahead
     for (let i = 0; i < 96 * 7; i++) { // 15 min chunks
-      // Shift +15 mins
       candidateStart.setMinutes(candidateStart.getMinutes() + 15);
       const startIso = candidateStart.toISOString();
       const endIso = addMinutes(startIso, duration);
-
       const checkStart = addMinutes(startIso, -buffer);
       const checkEnd = addMinutes(endIso, buffer);
 
@@ -211,48 +334,72 @@ export default function SchedulerScreen() {
       }
       return p;
     }));
-    // Re-check conflicts after duration change
     setTimeout(() => checkConflicts(pendingProposals), 0);
   };
 
   // --- Saving & Undo ---
 
+
+
   const handleHoldComplete = async (proposal: Proposal) => {
-    const newId = createId();
     try {
+      console.log("Starting commit for proposal:", proposal);
+
+      const payload = buildEventFromIntent(proposal);
+      console.log("Built payload:", payload);
+
+      const newId = createId();
+
       if (proposal.type === 'task') {
         await addTask({
           id: newId,
-          title: proposal.title,
-          notes: proposal.notes,
-          dueDate: proposal.dueDate
+          title: payload.title,
+          notes: payload.notes,
+          dueDate: payload.dueDate
         });
         setLastAction({ type: 'task', id: newId });
+        console.log("Task committed:", newId);
       } else {
-        if (proposal.startAt && proposal.endAt) {
-          await addEvent({
-            id: newId,
-            title: proposal.title,
-            startAt: proposal.startAt,
-            endAt: proposal.endAt,
-            location: proposal.location || undefined,
-            notes: proposal.notes || undefined,
-          });
-          setLastAction({ type: 'event', id: newId });
+        // Event
+        if (!payload.startAt || !payload.endAt) {
+          throw new Error("Event missing start/end");
         }
+        if (__DEV__) console.log("[SCHEDULER] create payload:", { id: newId, ...payload });
+        await addEvent({
+          id: newId,
+          title: payload.title,
+          startAt: payload.startAt,
+          endAt: payload.endAt,
+          location: payload.location,
+          notes: payload.notes,
+        });
+        setLastAction({ type: 'event', id: newId });
+        if (__DEV__) console.log("[SCHEDULER] committed event:", newId);
       }
 
-      // UI Feedback
       setPendingProposals(prev => prev.filter(p => p.id !== proposal.id));
       setConflicts(prev => prev.filter(c => c.proposalId !== proposal.id));
+      setSessionState(prev => ({ ...prev, lastProposals: null }));
 
-      // Show Undo
       setShowUndo(true);
       Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       setTimeout(() => hideUndo(), 5000);
 
-    } catch (e) {
+      const confirmText = proposal.type === 'task'
+        ? `Added task "${payload.title}".`
+        : `Scheduled "${payload.title}" for ${new Date(payload.startAt!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+
+      setMessages(prev => [...prev, {
+        id: createId(),
+        role: 'assistant',
+        text: `${confirmText} Anything else?`,
+        createdAt: new Date().toISOString()
+      }]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
       console.error("Save failed", e);
+      Alert.alert("Save Error", e.message || "Could not save item.");
     }
   };
 
@@ -268,14 +415,18 @@ export default function SchedulerScreen() {
     try {
       if (lastAction.type === 'event') {
         await deleteEvent(lastAction.id);
-      } else {
-        console.warn("Delete Task via Undo not strictly implemented in hook yet");
+      } else if (lastAction.type === 'task') {
+        await deleteTask(lastAction.id);
       }
+      setLastAction(null);
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setShowUndo(false);
+      });
       Alert.alert("Undone", "Item removed.");
     } catch (e) {
       console.error("Undo failed", e);
+      Alert.alert("Error", "Failed to undo.");
     }
-    hideUndo();
   };
 
   const resolveConflictReplace = async (proposal: Proposal, conflictEvent: Event) => {
@@ -284,9 +435,37 @@ export default function SchedulerScreen() {
   };
 
 
+  // --- Reset & New Chat ---
+
+  const resetChat = async () => {
+    await clearSchedulerSession();
+    setMessages([{
+      id: createId(),
+      role: 'assistant',
+      text: "What would you like to schedule?",
+      createdAt: new Date().toISOString(),
+    }]);
+    setPendingProposals([]);
+    setConflicts([]);
+    setSessionState(INITIAL_SESSION_STATE);
+    setLastAction(null);
+    setShowUndo(false);
+  };
+
+  const handleNewChat = () => {
+    if (messages.length > 1) { // >1 because of greeting
+      Alert.alert("New Chat", "Clear current conversation?", [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: resetChat }
+      ]);
+    } else {
+      resetChat();
+    }
+  };
+
+
   // --- Render ---
 
-  // Hold Button Component
   const HoldButton = ({ onComplete }: { onComplete: () => void }) => {
     const [pressing, setPressing] = useState(false);
     const progress = useRef(new Animated.Value(0)).current;
@@ -298,6 +477,7 @@ export default function SchedulerScreen() {
         duration: 700,
         useNativeDriver: false
       }).start(({ finished }) => {
+        if (__DEV__) console.log("[HoldButton] animation finished:", finished);
         if (finished) {
           onComplete();
           setPressing(false);
@@ -311,10 +491,7 @@ export default function SchedulerScreen() {
       Animated.timing(progress, { toValue: 0, duration: 100, useNativeDriver: false }).start();
     };
 
-    const width = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['0%', '100%']
-    });
+    const width = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
     return (
       <TouchableWithoutFeedback onPressIn={startPress} onPressOut={endPress}>
@@ -326,14 +503,12 @@ export default function SchedulerScreen() {
     );
   };
 
-
   const renderProposal = (proposal: Proposal) => {
     const isEvent = proposal.type === 'event';
     const iconName = isEvent ? 'calendar' : 'checkbox';
     const dateDisplay = isEvent && proposal.startAt
       ? new Date(proposal.startAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
       : proposal.dueDate;
-
     const myConflict = conflicts.find(c => c.proposalId === proposal.id);
 
     return (
@@ -355,7 +530,6 @@ export default function SchedulerScreen() {
           selectTextOnFocus
         />
 
-        {/* Duration Pills for Events */}
         {isEvent && proposal.startAt && proposal.endAt && (
           <View style={styles.durationRow}>
             {[30, 45, 60, 90].map(mins => (
@@ -381,7 +555,6 @@ export default function SchedulerScreen() {
           {proposal.location && <Text style={styles.detailText}>📍 {proposal.location}</Text>}
         </View>
 
-        {/* Conflict UI */}
         {myConflict && (
           <View style={styles.conflictBox}>
             <Text style={styles.conflictTitle}>⚠️ Conflict: &quot;{myConflict.event.title}&quot;</Text>
@@ -389,7 +562,6 @@ export default function SchedulerScreen() {
               <TouchableOpacity style={styles.conflictBtn} onPress={() => getNextFreeSlot(proposal)}>
                 <Text style={styles.conflictBtnText}>Find Next Slot</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.conflictBtn, { backgroundColor: '#FF3B30' }]}
                 onPress={() => resolveConflictReplace(proposal, myConflict.event)}
@@ -412,7 +584,7 @@ export default function SchedulerScreen() {
       <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
         {!isUser && (
           <View style={styles.avatar}>
-            <Ionicons name="sparkles" size={16} color="#fff" />
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
           </View>
         )}
         <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}>
@@ -423,48 +595,68 @@ export default function SchedulerScreen() {
   };
 
   useEffect(() => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages, pendingProposals, loading]);
+    if (messages.length > 0) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [messages, pendingProposals]);
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Scheduler</Text>
+        <TouchableOpacity onPress={handleNewChat} style={styles.newChatBtn}>
+          <Ionicons name="create-outline" size={24} color="#007AFF" />
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ flex: 1 }}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.listContent}
-              ListFooterComponent={
-                <View style={{ paddingBottom: 100 }}>
-                  {loading && (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#888" />
-                      <Text style={styles.loadingText}>Thinking...</Text>
-                    </View>
-                  )}
-                  {pendingProposals.map(renderProposal)}
-                </View>
-              }
-            />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            ListFooterComponent={
+              <View style={{ paddingBottom: 100 }}>
+                {loading && (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#888" />
+                    <Text style={styles.loadingText}>Processing...</Text>
+                  </View>
+                )}
+                {pendingProposals.map(renderProposal)}
+              </View>
+            }
+          />
 
-            {/* Undo Bar */}
-            {showUndo && (
-              <Animated.View style={[styles.undoBar, { opacity: fadeAnim }]}>
-                <Text style={styles.undoText}>Saved ✅</Text>
-                <TouchableOpacity onPress={handleUndo}>
-                  <Text style={styles.undoBtnText}>Undo</Text>
-                </TouchableOpacity>
-              </Animated.View>
+          {showUndo && (
+            <Animated.View style={[styles.undoBar, { opacity: fadeAnim }]}>
+              <Text style={styles.undoText}>Saved ✅</Text>
+              <TouchableOpacity onPress={handleUndo}>
+                <Text style={styles.undoBtnText}>Undo</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          <View style={styles.inputContainer}>
+            {sessionState.awaitingFields.length > 0 && (
+              <View style={styles.chipRow}>
+                <Text style={styles.chipLabel}>Needs:</Text>
+                {sessionState.awaitingFields.map(f => (
+                  <View key={f} style={styles.chip}>
+                    <Text style={styles.chipText}>{f}</Text>
+                  </View>
+                ))}
+              </View>
             )}
-
-            <View style={styles.inputContainer}>
+            <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
                 placeholder="Type a request..."
@@ -483,7 +675,7 @@ export default function SchedulerScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -493,6 +685,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F2F2F7',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  newChatBtn: {
+    padding: 4,
   },
   listContent: {
     padding: 16,
@@ -627,12 +836,38 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   inputContainer: {
-    flexDirection: 'row',
     padding: 12,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  chipRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6
+  },
+  chipLabel: {
+    fontSize: 12,
+    color: '#888',
+    marginRight: 4,
+    fontWeight: '600'
+  },
+  chip: {
+    backgroundColor: '#FFE0B2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12
+  },
+  chipText: {
+    fontSize: 12,
+    color: '#E65100',
+    fontWeight: '500'
   },
   input: {
     flex: 1,
