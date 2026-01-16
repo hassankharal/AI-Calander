@@ -28,8 +28,13 @@ export const useTasks = () => {
         await loadTasks();
     };
 
-    const toggleCompleted = async (id: string) => {
-        await TaskStore.toggleTaskCompleted(id);
+    const completeTask = async (id: string) => {
+        await TaskStore.completeTask(id);
+        await loadTasks();
+    };
+
+    const restoreTask = async (task: Task) => {
+        await TaskStore.restoreTask(task);
         await loadTasks();
     };
 
@@ -38,11 +43,18 @@ export const useTasks = () => {
         await loadTasks();
     };
 
+    const pendingTasks = tasks.filter(t => !t.completed);
+    const completedTasks = tasks.filter(t => t.completed);
+
     return {
-        tasks,
+        tasks, // All tasks
+        pendingTasks,
+        completedTasks,
         isLoading,
         addTask,
-        toggleCompleted,
+        completeTask,
+        toggleCompleted: completeTask, // Alias for backward compat if needed
+        restoreTask,
         deleteTask,
         refresh: loadTasks,
     };

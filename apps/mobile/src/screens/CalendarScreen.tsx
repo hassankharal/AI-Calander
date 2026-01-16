@@ -1,39 +1,75 @@
-﻿import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, SafeAreaView, Platform, KeyboardAvoidingView } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useFocusEffect } from '@react-navigation/native';
+﻿import React, { useState, useMemo, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  SafeAreaView,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Keyboard,
+  ScrollView
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useEvents } from '../hooks/useEvents';
 import { Event } from '../types/event';
+import {
+  getMonthGrid,
+  addMonths,
+  isoDateKey,
+  formatTimeRange,
+  isSameMonth,
+  isSameDay,
+  isToday
+} from '../lib/dateUtils';
+import { useFocusEffect } from '@react-navigation/native';
+import { useToast } from '../components/ToastBanner';
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function CalendarScreen() {
-  const { events, refresh, addEvent, deleteEvent, findConflicts } = useEvents();
+  const { events, refresh, addEvent, updateEvent, deleteEvent } = useEvents();
+  const { showToast } = useToast();
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Date Picker visibility (for main screen)
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Modal State
+  // CRUD State
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null); // null = creating
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
-  const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(new Date());
+  const [notes, setNotes] = useState('');
+  const [startTime, setStartTime] = useState('09:00'); // HH:MM
+  const [duration, setDuration] = useState('60'); // Minutes string
 
-  // Modal Time Picker States
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-
-  // Conflicts
-  const [conflicts, setConflicts] = useState<Event[]>([]);
-
+  // Refresh events when screen focuses
   useFocusEffect(
     useCallback(() => {
       refresh();
     }, [refresh])
   );
 
-  // Filter events for selected date
-  const dayEvents = useMemo(() => {
+  // Generate the 42-day grid
+  const daysGrid = useMemo(() => getMonthGrid(currentMonth), [currentMonth]);
+
+  // Map events to date keys -> count/existence
+  const eventMap = useMemo(() => {
+    const map = new Map<string, number>();
+    events.forEach(e => {
+      const d = new Date(e.startAt);
+      const key = isoDateKey(d);
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [events]);
+
+  // Filter events for the selected day list
+  const selectedEvents = useMemo(() => {
     const startOfDay = new Date(selectedDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(selectedDate);
@@ -43,156 +79,241 @@ export default function CalendarScreen() {
     const eStr = endOfDay.toISOString();
 
     return events.filter(e => {
-      // Simple overlap check with the day
       return e.startAt < eStr && e.endAt > sStr;
-    });
+    }).sort((a, b) => a.startAt.localeCompare(b.startAt));
+
   }, [events, selectedDate]);
 
-  // Check conflicts when times change
-  useEffect(() => {
-    if (!modalVisible) return;
 
-    const check = async () => {
-      const confs = await findConflicts(startTime.toISOString(), endTime.toISOString());
-      setConflicts(confs);
-    };
-    check();
-  }, [startTime, endTime, modalVisible, findConflicts]);
-
-  const onDateChange = (event: DateTimePickerEvent, date?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (date) {
-      setSelectedDate(date);
-      if (Platform.OS === 'android') setShowDatePicker(false);
-    } else {
-      if (Platform.OS === 'android') setShowDatePicker(false);
-    }
+  // Navigation
+  const prevMonth = () => setCurrentMonth(addMonths(currentMonth, -1));
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const jumpToday = () => {
+    const now = new Date();
+    setCurrentMonth(now);
+    setSelectedDate(now);
   };
 
-  const onStartTimeChange = (event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === 'android') setShowStartPicker(false);
-    if (date) {
-      const newStart = new Date(startTime);
-      newStart.setHours(date.getHours());
-      newStart.setMinutes(date.getMinutes());
-      setStartTime(newStart);
-
-      // Auto adjust end time if it becomes before start time (keep duration or just bump)
-      if (newStart >= endTime) {
-        const newEnd = new Date(newStart);
-        newEnd.setHours(newStart.getHours() + 1);
-        setEndTime(newEnd);
-      }
-    }
-  };
-
-  const onEndTimeChange = (event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === 'android') setShowEndPicker(false);
-    if (date) {
-      const newEnd = new Date(endTime);
-      newEnd.setHours(date.getHours());
-      newEnd.setMinutes(date.getMinutes());
-
-      if (newEnd < startTime) {
-        Alert.alert('Invalid Time', 'End time cannot be before start time');
-      } else {
-        setEndTime(newEnd);
-      }
-    }
-  };
-
-  const handleCreateEvent = async () => {
-    if (!title.trim()) {
-      Alert.alert('Error', 'Title is required');
-      return;
-    }
-
-    await addEvent({
-      title: title.trim(),
-      location: location.trim(),
-      startAt: startTime.toISOString(),
-      endAt: endTime.toISOString(),
-    });
-
-    setModalVisible(false);
-    resetForm();
-  };
-
-  const resetForm = () => {
+  // CRUD Helpers
+  const openCreateModal = () => {
+    setEditingEvent(null);
     setTitle('');
     setLocation('');
-    setConflicts([]);
-  };
-
-  const openModal = () => {
-    // Initialize times based on selectedDate
-    const start = new Date(selectedDate);
-    const now = new Date(); // Use current time hours if on today?
-
-    // If selected date is today, use next hour. If future/past, just use 9am? 
-    // Let's just use current clock time but on selected date
-    start.setHours(now.getHours() + 1, 0, 0, 0);
-
-    const end = new Date(start);
-    end.setHours(start.getHours() + 1);
-
-    setStartTime(start);
-    setEndTime(end);
+    setNotes('');
+    // Default to next hour?
+    const now = new Date();
+    const nextHour = new Date(now);
+    nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+    setStartTime(`${String(nextHour.getHours()).padStart(2, '0')}:${String(nextHour.getMinutes()).padStart(2, '0')}`);
+    setDuration('60');
     setModalVisible(true);
   };
 
-  const renderEventItem = ({ item }: { item: Event }) => {
-    const s = new Date(item.startAt);
-    const e = new Date(item.endAt);
-    const timeStr = `${s.getHours()}:${s.getMinutes().toString().padStart(2, '0')} - ${e.getHours()}:${e.getMinutes().toString().padStart(2, '0')}`;
+  const openEditModal = (event: Event) => {
+    setEditingEvent(event);
+    setTitle(event.title);
+    setLocation(event.location || '');
+    setNotes(event.notes || '');
+
+    const start = new Date(event.startAt);
+    setStartTime(`${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`);
+
+    const end = new Date(event.endAt);
+    const diffMs = end.getTime() - start.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    setDuration(String(diffMins));
+
+    setModalVisible(true);
+  };
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      Alert.alert("Required", "Please enter a title.");
+      return;
+    }
+
+    // Parse time
+    const [hh, mm] = startTime.split(':').map(Number);
+    if (isNaN(hh) || isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+      Alert.alert("Invalid Time", "Use format HH:MM (24h)");
+      return;
+    }
+
+    const dur = parseInt(duration);
+    if (isNaN(dur) || dur <= 0) {
+      Alert.alert("Invalid Duration", "Duration must be positive minutes");
+      return;
+    }
+
+    // Construct dates
+    let baseDate = new Date(selectedDate);
+    if (editingEvent) {
+      // If editing, use the original date of the event, but update start time?
+      // Or if user selected a DIFFERENT date on calendar, maybe they want to move it?
+      // Standard UX: If I open an event from Agenda, I expect to edit THAT event.
+      // If I want to move it, I usually change the date field.
+      // Since we lack a Date Picker in modal, let's keep the event's original date (Year/Month/Day).
+      baseDate = new Date(editingEvent.startAt);
+    }
+
+    baseDate.setHours(hh, mm, 0, 0);
+    const startIso = baseDate.toISOString();
+
+    const end = new Date(baseDate);
+    end.setMinutes(baseDate.getMinutes() + dur);
+    const endIso = end.toISOString();
+
+    try {
+      if (editingEvent) {
+        await updateEvent(editingEvent.id, {
+          title,
+          location,
+          notes,
+          startAt: startIso,
+          endAt: endIso
+        });
+        showToast("Event updated");
+      } else {
+        await addEvent({
+          title,
+          location,
+          notes,
+          startAt: startIso,
+          endAt: endIso
+        });
+        showToast("Event created");
+      }
+      setModalVisible(false);
+    } catch (e: any) { // eslint-disable-line
+      Alert.alert("Error", e.message || "Failed to save");
+    }
+  };
+
+  const handleDelete = () => {
+    if (!editingEvent) return;
+    Alert.alert("Delete Event", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          await deleteEvent(editingEvent.id);
+          setModalVisible(false);
+          showToast("Event deleted");
+        }
+      }
+    ]);
+  };
+
+  // Renderers
+
+  const renderDayCell = (date: Date) => {
+    const dateKey = isoDateKey(date);
+    const isCurrentMonth = isSameMonth(date, currentMonth);
+    const isSelected = isSameDay(date, selectedDate);
+    const isTodayDate = isToday(date);
+    const hasEvents = (eventMap.get(dateKey) || 0) > 0;
 
     return (
-      <View style={styles.eventItem}>
-        <View style={styles.eventContent}>
-          <Text style={styles.eventTitle}>{item.title}</Text>
-          <Text style={styles.eventTime}>{timeStr}</Text>
-          {item.location ? <Text style={styles.eventLocation}>📍 {item.location}</Text> : null}
-        </View>
-        <TouchableOpacity onPress={() => Alert.alert('Delete', 'Delete this event?', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => deleteEvent(item.id) }
-        ])}>
-          <Text style={styles.deleteText}>✕</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        key={dateKey}
+        style={[
+          styles.cell,
+          isSelected && styles.selectedCell,
+          !isCurrentMonth && styles.otherMonthCell
+        ]}
+        onPress={() => {
+          setSelectedDate(date);
+          if (!isSameMonth(date, currentMonth)) {
+            setCurrentMonth(date);
+          }
+        }}
+      >
+        <Text style={[
+          styles.cellText,
+          isSelected && styles.selectedText,
+          !isCurrentMonth && styles.otherMonthText,
+          isTodayDate && !isSelected && styles.todayText
+        ]}>
+          {date.getDate()}
+        </Text>
+        {/* Event Dot */}
+        {hasEvents && (
+          <View style={[styles.dot, isSelected ? styles.dotSelected : styles.dotNormal]} />
+        )}
+      </TouchableOpacity>
     );
   };
 
+  const renderAgendaItem = ({ item }: { item: Event }) => (
+    <TouchableOpacity style={styles.agendaItem} onPress={() => openEditModal(item)}>
+      <View style={styles.agendaTimeBox}>
+        <Text style={styles.agendaTime}>{formatTimeRange(item.startAt, item.endAt)}</Text>
+      </View>
+      <View style={styles.agendaContent}>
+        <Text style={styles.agendaTitle}>{item.title}</Text>
+        {item.location && <Text style={styles.agendaLocation}>📍 {item.location}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateSelector}>
-          <Text style={styles.dateText}>{selectedDate.toDateString()} ▼</Text>
+        <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
+          <Ionicons name="chevron-back" size={24} color="#007AFF" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addButton} onPress={openModal}>
-          <Text style={styles.addButtonText}>+</Text>
+        <Text style={styles.monthTitle}>
+          {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
+          <Ionicons name="chevron-forward" size={24} color="#007AFF" />
         </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={jumpToday} style={styles.todayBtn}>
+            <Text style={styles.todayBtnText}>Today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={openCreateModal} style={styles.addEventBtn}>
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {showDatePicker && (
-        <DateTimePicker
-          testID="dateTimePicker"
-          value={selectedDate}
-          mode="date"
-          is24Hour={true}
-          display="default"
-          onChange={onDateChange}
-        />
-      )}
+      {/* Weekday Headers */}
+      <View style={styles.weekRow}>
+        {WEEKDAYS.map(day => (
+          <Text key={day} style={styles.weekHeader}>{day}</Text>
+        ))}
+      </View>
 
+      {/* Month Grid */}
+      <View style={styles.grid}>
+        <View style={styles.gridRowWrap}>
+          {daysGrid.map((d) => renderDayCell(d))}
+        </View>
+      </View>
+
+      {/* Agenda Header */}
+      <View style={styles.agendaHeader}>
+        <Text style={styles.agendaDate}>
+          {selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+
+      {/* Agenda List */}
       <FlatList
-        data={dayEvents}
+        data={selectedEvents}
         keyExtractor={item => item.id}
-        renderItem={renderEventItem}
+        renderItem={renderAgendaItem}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<Text style={styles.emptyText}>No events for this day</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No events</Text>
+          </View>
+        }
       />
 
+      {/* Edit/Create Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -203,69 +324,76 @@ export default function CalendarScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>New Event</Text>
+          <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <ScrollView>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{editingEvent ? "Edit Event" : "New Event"}</Text>
+                  <TouchableOpacity onPress={handleSave}>
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Title (required)"
-              value={title}
-              onChangeText={setTitle}
-            />
+                <TextInput
+                  style={styles.titleInput}
+                  placeholder="Event Title"
+                  value={title}
+                  onChangeText={setTitle}
+                  autoFocus={!editingEvent}
+                />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Location"
-              value={location}
-              onChangeText={setLocation}
-            />
+                <View style={styles.row}>
+                  <View style={styles.halfInput}>
+                    <Text style={styles.label}>Start (HH:MM)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={startTime}
+                      onChangeText={setStartTime}
+                      placeholder="09:00"
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </View>
+                  <View style={styles.halfInput}>
+                    <Text style={styles.label}>Duration (min)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={duration}
+                      onChangeText={setDuration}
+                      placeholder="60"
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
 
-            <Text style={styles.label}>Start Time</Text>
-            <TouchableOpacity style={styles.timeButton} onPress={() => setShowStartPicker(true)}>
-              <Text>{startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-            </TouchableOpacity>
-            {showStartPicker && (
-              <DateTimePicker
-                value={startTime}
-                mode="time"
-                is24Hour={true}
-                display="default"
-                onChange={onStartTimeChange}
-              />
-            )}
+                <TextInput
+                  style={styles.input}
+                  placeholder="Location (Optional)"
+                  value={location}
+                  onChangeText={setLocation}
+                />
 
-            <Text style={styles.label}>End Time</Text>
-            <TouchableOpacity style={styles.timeButton} onPress={() => setShowEndPicker(true)}>
-              <Text>{endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-            </TouchableOpacity>
-            {showEndPicker && (
-              <DateTimePicker
-                value={endTime}
-                mode="time"
-                is24Hour={true}
-                display="default"
-                onChange={onEndTimeChange}
-              />
-            )}
+                <TextInput
+                  style={[styles.input, styles.notesInput]}
+                  placeholder="Notes (Optional)"
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                />
 
-            {conflicts.length > 0 && (
-              <View style={styles.conflictBox}>
-                <Text style={styles.conflictTitle}>⚠ Conflicts detected:</Text>
-                {conflicts.map(c => (
-                  <Text key={c.id} style={styles.conflictText}>• {c.title}</Text>
-                ))}
-              </View>
-            )}
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
-                <Text style={styles.buttonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleCreateEvent}>
-                <Text style={[styles.buttonText, { color: '#fff' }]}>Save</Text>
-              </TouchableOpacity>
+                  {editingEvent && (
+                    <TouchableOpacity onPress={handleDelete}>
+                      <Text style={styles.deleteText}>Delete Event</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </ScrollView>
             </View>
-          </View>
+          </Pressable>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
@@ -273,168 +401,88 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    paddingTop: Platform.OS === 'android' ? 25 : 0,
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   header: {
-    padding: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#eee'
   },
-  dateSelector: {
-    padding: 10,
-  },
-  dateText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  addButton: {
-    backgroundColor: '#007AFF',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  monthTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  navBtn: { padding: 8 },
+  todayBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#f0f0f0', borderRadius: 12, marginRight: 8 },
+  todayBtnText: { fontSize: 12, color: '#007AFF', fontWeight: '600' },
+  addEventBtn: { backgroundColor: '#007AFF', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+
+  weekRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 8 },
+  weekHeader: { flex: 1, textAlign: 'center', fontSize: 13, color: '#888', fontWeight: '600' },
+
+  grid: { paddingVertical: 10 },
+  gridRowWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: {
+    width: '14.28%', // 100% / 7
+    aspectRatio: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: -2,
+  selectedCell: { backgroundColor: '#007AFF', borderRadius: 20 },
+  otherMonthCell: { opacity: 0.3 },
+
+  cellText: { fontSize: 16, color: '#333' },
+  selectedText: { color: '#fff', fontWeight: 'bold' },
+  otherMonthText: { color: '#999' },
+  todayText: { color: '#007AFF', fontWeight: 'bold' },
+
+  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
+  dotNormal: { backgroundColor: '#007AFF' },
+  dotSelected: { backgroundColor: '#fff' },
+
+  agendaHeader: {
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#eee'
   },
-  listContent: {
-    padding: 20,
-  },
-  eventItem: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
+  agendaDate: { fontSize: 14, fontWeight: '600', color: '#555' },
+
+  listContent: { paddingBottom: 20 },
+  agendaItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    alignItems: 'center'
   },
-  eventContent: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  eventTime: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  eventLocation: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 2,
-  },
-  deleteText: {
-    fontSize: 20,
-    color: '#999',
-    padding: 10,
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 40,
-    color: '#999',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-    marginTop: 5,
-  },
-  timeButton: {
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 15,
-    alignItems: 'center',
-    marginRight: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  saveButton: {
-    flex: 1,
-    padding: 15,
-    alignItems: 'center',
-    marginLeft: 10,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  conflictBox: {
-    backgroundColor: '#FFF4E5',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#FFCC80',
-  },
-  conflictTitle: {
-    color: '#D84315',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  conflictText: {
-    color: '#E65100',
-    fontSize: 12,
-  },
+  agendaTimeBox: { width: 80 },
+  agendaTime: { fontSize: 12, color: '#666' },
+  agendaContent: { flex: 1, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: '#007AFF' },
+  agendaTitle: { fontSize: 16, fontWeight: '500', color: '#000' },
+  agendaLocation: { fontSize: 12, color: '#888', marginTop: 2 },
+
+  emptyContainer: { padding: 40, alignItems: 'center' },
+  emptyText: { color: '#999', fontSize: 14 },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  saveBtnText: { color: '#007AFF', fontSize: 18, fontWeight: 'bold' },
+
+  titleInput: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 5 },
+  row: { flexDirection: 'row', gap: 15, marginBottom: 15 },
+  halfInput: { flex: 1 },
+  label: { fontSize: 12, color: '#666', marginBottom: 5 },
+  input: { borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#f9f9f9', marginBottom: 15 },
+  notesInput: { height: 80, textAlignVertical: 'top' },
+
+  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, alignItems: 'center' },
+  cancelText: { fontSize: 16, color: '#666' },
+  deleteText: { fontSize: 16, color: 'red' }
 });
