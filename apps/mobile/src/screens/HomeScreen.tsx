@@ -74,25 +74,24 @@ export default function HomeScreen() {
     };
   }, [events]);
 
+  // Force re-calc at least once per day
+  const todayKey = new Date().toDateString();
+
   const dailyCalibration = useMemo(() => {
     const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
-    const noon = new Date(now);
-    noon.setHours(12, 0, 0, 0);
 
-    const todayEvents = events.filter(e => {
-      const start = new Date(e.startAt);
-      return start >= startOfDay && start <= endOfDay;
-    });
+    const isSameLocalDay = (d1: Date, d2: Date) =>
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate();
+
+    const todayEvents = events.filter(e => isSameLocalDay(new Date(e.startAt), now));
 
     if (todayEvents.length === 0) {
       return "Open runway this morning. Prioritize one meaningful output.";
     }
 
-    const morningEvents = todayEvents.filter(e => new Date(e.startAt) < noon);
+    const morningEvents = todayEvents.filter(e => new Date(e.startAt).getHours() < 12);
     if (morningEvents.length >= 2) {
       return "Execution day. Deep work protected until noon.";
     }
@@ -102,7 +101,7 @@ export default function HomeScreen() {
     }
 
     return "Balanced day. Maintain momentum.";
-  }, [events]);
+  }, [events, todayKey]);
 
   useEffect(() => {
     if (__DEV__) console.log("[HOME] daily calibration:", dailyCalibration);

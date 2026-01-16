@@ -8,4 +8,5 @@ export interface Event {
     allDay?: boolean;
     createdAt: string;
     updatedAt: string;
+    isAnchor?: boolean;
 }

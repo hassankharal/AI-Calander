@@ -48,7 +48,7 @@ import { createId } from '../lib/id';
 
 // ... (imports)
 
-export const addTask = async (input: { id?: string; title: string; notes?: string; dueDate?: string }): Promise<Task> => {
+export const addTask = async (input: { id?: string; title: string; notes?: string; dueDate?: string; isAnchor?: boolean }): Promise<Task> => {
     const tasks = await getTasks();
     const newTask: Task = {
         id: input.id || createId(),
@@ -59,7 +59,8 @@ export const addTask = async (input: { id?: string; title: string; notes?: strin
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         completedAt: null,
-        scheduledEventId: null
+        scheduledEventId: null,
+        isAnchor: input.isAnchor
     };
 
     const updatedTasks = [...tasks, newTask];

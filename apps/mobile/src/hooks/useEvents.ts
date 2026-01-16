@@ -29,6 +29,7 @@ export const useEvents = () => {
         location?: string;
         notes?: string;
         allDay?: boolean;
+        isAnchor?: boolean;
     }) => {
         const newEvent = await EventStore.addEvent(input);
         await loadEvents();

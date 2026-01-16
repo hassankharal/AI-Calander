@@ -283,8 +283,7 @@ export default function SchedulerScreen() {
       // Tasks usually have no duration/conflict, so strict check mainly applies if it was an event.
       // But rule says: proposal.type === 'task'.
       const isTask = p.type === 'task';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const isAnchor = (p as any).anchor === true;
+      const isAnchor = p.isAnchor === true;
       const duration = (p.startAt && p.endAt) ? getDurationMinutes(p.startAt, p.endAt) : 0;
 
       if (isTask && !isAnchor && !hasConflict(p) && duration <= 60) {
@@ -489,11 +488,15 @@ export default function SchedulerScreen() {
       const newId = createId();
 
       if (proposal.type === 'task') {
+        const isAnchor = proposal.isAnchor === true;
+        if (__DEV__ && isAnchor) console.log(`[ANCHOR] set task ${newId} anchor=true`);
+
         await addTask({
           id: newId,
           title: payload.title,
           notes: payload.notes,
-          dueDate: payload.dueDate
+          dueDate: payload.dueDate,
+          isAnchor
         });
         setLastAction({ type: 'task', id: newId });
         console.log("Task committed:", newId);
@@ -503,6 +506,10 @@ export default function SchedulerScreen() {
         if (!payload.startAt || !payload.endAt) {
           throw new Error("Event missing start/end");
         }
+
+        // Check if proposal has anchor prop (from logic or prompt)
+        const isAnchor = proposal.isAnchor === true;
+
         if (__DEV__) console.log("[SCHEDULER] create payload:", { id: newId, ...payload });
         await addEvent({
           id: newId,
@@ -511,6 +518,7 @@ export default function SchedulerScreen() {
           endAt: payload.endAt,
           location: payload.location,
           notes: payload.notes,
+          isAnchor
         });
         setLastAction({ type: 'event', id: newId });
         if (__DEV__) console.log("[SCHEDULER] committed event:", newId);
@@ -576,6 +584,11 @@ export default function SchedulerScreen() {
   };
 
   const resolveConflictReplace = async (proposal: Proposal, conflictEvent: Event) => {
+    if (conflictEvent.isAnchor) {
+      if (__DEV__) console.log("[ANCHOR] conflict with anchor task -> confirmation required");
+      Alert.alert("Cannot Replace", "This event is marked as an Anchor (Non-Negotiable).");
+      return;
+    }
     await deleteEvent(conflictEvent.id);
     setConflicts(prev => prev.filter(c => c.event.id !== conflictEvent.id));
   };

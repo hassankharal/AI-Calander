@@ -8,4 +8,5 @@ export interface Task {
   updatedAt: string;
   completedAt?: string | null;
   scheduledEventId?: string | null;
+  isAnchor?: boolean;
 }

@@ -54,6 +54,7 @@ export const addEvent = async (input: {
     location?: string;
     notes?: string;
     allDay?: boolean;
+    isAnchor?: boolean;
 }): Promise<Event> => {
     const events = await getEvents();
     const newEvent: Event = {
@@ -66,6 +67,7 @@ export const addEvent = async (input: {
         allDay: input.allDay,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isAnchor: input.isAnchor
     };
 
     const updatedEvents = [...events, newEvent];

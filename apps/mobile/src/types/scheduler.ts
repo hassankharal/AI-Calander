@@ -15,6 +15,7 @@ export interface Proposal {
     endAt?: string;   // ISO datetime (for events)
     location?: string;
     confidence?: number;
+    isAnchor?: boolean;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

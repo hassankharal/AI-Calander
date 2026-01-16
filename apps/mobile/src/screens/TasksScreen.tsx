@@ -25,6 +25,7 @@ export default function TasksScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
+  const [isAnchor, setIsAnchor] = useState(false);
 
   // Scheduling State
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
@@ -58,9 +59,11 @@ export default function TasksScreen() {
     await addTask({
       title: newTitle.trim(),
       dueDate: newDueDate.trim() || undefined,
+      isAnchor
     });
     setNewTitle('');
     setNewDueDate('');
+    setIsAnchor(false);
     setCreateModalVisible(false);
     showToast("Task added");
   };
@@ -166,7 +169,8 @@ export default function TasksScreen() {
         title: finalTitle,
         startAt: proposal.startAt,
         endAt: proposal.endAt,
-        notes: noteContent
+        notes: noteContent,
+        isAnchor: selectedTask.isAnchor
       });
 
       if (newEvent) {
@@ -272,6 +276,11 @@ export default function TasksScreen() {
         {item.dueDate && (
           <Text style={styles.dueDate}>Due: {item.dueDate}</Text>
         )}
+        {item.isAnchor && (
+          <View style={styles.anchorTag}>
+            <Text style={styles.anchorTagText}>ANCHOR</Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       {/* Actions (Only for pending) */}
@@ -373,6 +382,17 @@ export default function TasksScreen() {
                 value={newDueDate}
                 onChangeText={setNewDueDate}
               />
+
+              <View style={styles.anchorRow}>
+                <Text style={styles.anchorLabel}>Anchor (Non-Negotiable)</Text>
+                <TouchableOpacity
+                  style={[styles.anchorToggle, isAnchor && styles.anchorToggleActive]}
+                  onPress={() => setIsAnchor(!isAnchor)}
+                >
+                  <View style={[styles.anchorKnob, isAnchor && styles.anchorKnobActive]} />
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.modalButtons}>
                 <TouchableOpacity style={styles.cancelButton} onPress={() => setCreateModalVisible(false)}>
                   <Text style={styles.buttonText}>Cancel</Text>
@@ -696,5 +716,15 @@ const styles = StyleSheet.create({
   cancelLinkText: { color: '#666' },
 
   closeModalBtn: { marginTop: 20, alignItems: 'center', padding: 10 },
-  closeModalText: { color: '#666' }
+  closeModalText: { color: '#666' },
+
+  anchorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  anchorLabel: { fontSize: 16, color: '#333' },
+  anchorToggle: { width: 50, height: 30, borderRadius: 15, backgroundColor: '#eee', justifyContent: 'center', padding: 2 },
+  anchorToggleActive: { backgroundColor: '#34C759' },
+  anchorKnob: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff' },
+  anchorKnobActive: { alignSelf: 'flex-end' },
+
+  anchorTag: { backgroundColor: '#FFD60A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 },
+  anchorTagText: { fontSize: 10, fontWeight: 'bold', color: '#000' }
 });
