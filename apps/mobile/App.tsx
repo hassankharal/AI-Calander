@@ -8,6 +8,7 @@ import PersonalSetupScreen from './src/screens/PersonalSetupScreen';
 import { useUserMemory } from './src/hooks/useUserMemory';
 import { SetupContext } from './src/navigation/SetupContext';
 import { ToastProvider } from './src/components/ToastBanner';
+import { colors } from './src/theme/tokens';
 
 function AppContent() {
   const { session, loading: authLoading } = useAuth();
@@ -24,8 +25,8 @@ function AppContent() {
 
   if (authLoading || memLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.obsidian }}>
+        <ActivityIndicator size="large" color={colors.cyan} />
       </View>
     );
   }
@@ -40,7 +41,7 @@ function AppContent() {
 
   if (setupActive) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.obsidian }}>
         <PersonalSetupScreen onExit={() => setSetupActive(false)} />
       </SafeAreaView>
     );

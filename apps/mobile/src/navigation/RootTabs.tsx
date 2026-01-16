@@ -5,6 +5,7 @@ import CalendarScreen from '../screens/CalendarScreen';
 import SchedulerScreen from '../screens/SchedulerScreen';
 import TasksScreen from '../screens/TasksScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { colors } from '../theme/tokens';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -45,8 +46,21 @@ export default function RootTabs() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: colors.textPrimary,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: colors.obsidian,
+          borderTopColor: colors.borderGlass,
+          borderTopWidth: 1,
+          paddingTop: 12, // Increased spacing
+          height: 92, // Taller for premium feel
+        },
+        tabBarLabelStyle: {
+          fontSize: 11, // Improved legibility
+          fontWeight: '600',
+          paddingBottom: 8,
+        },
+        headerShown: false,
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -54,6 +68,6 @@ export default function RootTabs() {
       <Tab.Screen name="Scheduler" component={SchedulerScreen} />
       <Tab.Screen name="Tasks" component={TasksScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
-    </Tab.Navigator>
+    </Tab.Navigator >
   );
 }
