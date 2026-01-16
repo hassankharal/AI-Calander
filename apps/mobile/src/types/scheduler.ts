@@ -16,3 +16,12 @@ export interface Proposal {
     location?: string;
     confidence?: number;
 }
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface SchedulerSessionState {
+    pendingIntent: any | null;
+    awaitingFields: string[];
+    lastQuestion: string | null;
+    lastProposals: any[] | null;
+    lastUserMessageId: string | null;
+}

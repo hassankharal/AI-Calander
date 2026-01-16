@@ -70,6 +70,7 @@ export const addEvent = async (input: {
 
     const updatedEvents = [...events, newEvent];
     await saveEvents(sortEvents(updatedEvents));
+    if (__DEV__) console.log("[EVENTS] stored event:", newEvent);
     return newEvent;
 };
 
