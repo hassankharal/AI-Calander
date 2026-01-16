@@ -8,7 +8,7 @@ import { Event } from '../types/event';
 import {
   colors,
   typography,
-  surfaces
+  glass
 } from '../theme';
 import { GhostEvent } from '../types/ghost';
 
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   calibrationCard: {
-    ...surfaces.glassCard,
+    ...glass.card,
     padding: 16,
     marginVertical: 16,
     borderRadius: 12,
@@ -304,13 +304,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   section: {
-    ...surfaces.glassCard,
+    ...glass.card,
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
   },
   highlightSection: {
-    ...surfaces.glassCard,
+    ...glass.card,
     borderColor: colors.cyan, // Subtle accent for "Next Event" if desired, or keep generic
   },
   sectionHeader: {
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   sectionTitle: {
-    ...typography.caption,
+    ...typography.muted,
     fontSize: 14,
     color: colors.textSecondary,
     textTransform: 'uppercase',
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   badgeText: {
-    ...typography.caption,
+    ...typography.muted,
     color: colors.textPrimary,
     fontSize: 12,
   },
@@ -365,13 +365,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   snippetDate: {
-    ...typography.caption,
+    ...typography.muted,
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
   snippetLocation: {
-    ...typography.caption,
+    ...typography.muted,
     fontSize: 12,
     color: colors.cyan,
     marginTop: 2,
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   nextEventLoc: {
-    ...typography.caption,
+    ...typography.muted,
     fontSize: 14,
     color: colors.textSecondary,
   },
